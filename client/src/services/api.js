@@ -19,6 +19,10 @@ import {
   generateLocalExportUrl,
   getAllUsers,
   registerUser,
+  getPendingUsers,
+  approveUser,
+  rejectUser,
+  deleteUser,
   getActiveSessions,
   getCurrentSession,
   loginUser,
@@ -269,6 +273,22 @@ export async function kickSession(sessionId) {
 
 export async function fetchAllUsers() {
   return getAllUsers();
+}
+
+export async function fetchPendingUsers() {
+  return getPendingUsers();
+}
+
+export async function approveRegistration(userId) {
+  return approveUser(userId);
+}
+
+export async function rejectRegistration(userId) {
+  return rejectUser(userId);
+}
+
+export async function deleteUserAccount(userId) {
+  return deleteUser(userId);
 }
 
 export async function promoteUser(userId, newRole) {

@@ -11,7 +11,8 @@ import {
   Users,
   KeyRound,
   ShieldCheck,
-  Compass
+  Compass,
+  LogOut
 } from 'lucide-react';
 import { getExportUrl } from '../services/api';
 
@@ -26,7 +27,8 @@ export function Navbar({
   currentSession,
   activeSessionsCount = 1,
   onOpenAuth,
-  onNavigate
+  onNavigate,
+  onLogout
 }) {
   const handleExport = () => {
     window.location.href = getExportUrl();
@@ -107,22 +109,35 @@ export function Navbar({
       {/* Right Action Controls */}
       <div className="flex items-center gap-2 shrink-0">
         {/* Concurrent Logon / User Pill */}
-        <button
-          onClick={onOpenAuth}
-          className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold shadow-xs transition"
-          title="Concurrent Sessions & Identity Manager"
-        >
-          <div className="w-5 h-5 rounded-lg bg-sky-600 text-white flex items-center justify-center text-[10px] font-bold">
-            {currentSession?.name ? currentSession.name.charAt(0).toUpperCase() : 'U'}
-          </div>
-          <span className="hidden lg:inline max-w-[100px] truncate">
-            {currentSession?.name || 'Log In'}
-          </span>
-          <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-            <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-            <span>{activeSessionsCount}</span>
-          </span>
-        </button>
+        <div className="flex items-center gap-1">
+          <button
+            onClick={onOpenAuth}
+            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold shadow-xs transition"
+            title="Concurrent Sessions & Identity Manager"
+          >
+            <div className="w-5 h-5 rounded-lg bg-sky-600 text-white flex items-center justify-center text-[10px] font-bold">
+              {currentSession?.name ? currentSession.name.charAt(0).toUpperCase() : 'U'}
+            </div>
+            <span className="hidden lg:inline max-w-[100px] truncate">
+              {currentSession?.name || 'Log In'}
+            </span>
+            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
+              <span>{activeSessionsCount}</span>
+            </span>
+          </button>
+
+          {onLogout && (
+            <button
+              onClick={onLogout}
+              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 shadow-xs transition"
+              title="Sign Out / Terminate Session"
+              aria-label="Sign Out"
+            >
+              <LogOut className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
 
         {/* Admin Shortcut */}
         {isAdmin && (

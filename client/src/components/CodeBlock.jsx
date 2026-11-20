@@ -50,8 +50,8 @@ export function CodeBlock({ code, language = 'abap', title, lineExplanations = [
         </div>
       </div>
 
-      {/* Code Body */}
-      <div className="p-4 sm:p-5 overflow-x-auto thin-scroll leading-relaxed bg-white dark:bg-slate-950/70 text-slate-800 dark:text-slate-200">
+      {/* Code Body - Soothing Eye-Friendly Cool-White / Calm Slate */}
+      <div className="p-4 sm:p-5 overflow-x-auto thin-scroll leading-relaxed bg-slate-50/70 dark:bg-slate-900 border-t border-slate-200/80 dark:border-slate-800 text-slate-800 dark:text-slate-200">
         <pre className="font-mono text-xs whitespace-pre">
           <code>{code}</code>
         </pre>

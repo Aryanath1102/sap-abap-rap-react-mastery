@@ -31,21 +31,45 @@ export default async function handler(req, res) {
       return res.status(200).json(inMemorySessions);
     }
 
-    // 2. LOGIN (CONCURRENT SESSION CREATION)
+    // 2. LOGIN / REGISTRATION (BASIC AUTH WITH ADMIN APPROVAL)
     if (req.method === 'POST') {
-      const { usernameOrEmail, role = 'student', activeTrack = 'rap' } = req.body || {};
-      const username = (usernameOrEmail || 'developer').trim().toLowerCase();
+      const { usernameOrEmail, password, role = 'student', activeTrack = 'rap', action = 'login', name } = req.body || {};
+      const username = (usernameOrEmail || '').trim();
+
+      if (action === 'register') {
+        if (!username || !password) {
+          return res.status(400).json({ error: 'Username and password are required.' });
+        }
+        return res.status(200).json({
+          success: true,
+          pendingApproval: true,
+          message: 'Registration request submitted! Your account is pending Administrator approval from Aryanath.'
+        });
+      }
+
+      // Default to login
+      if (!username || !password) {
+        return res.status(400).json({ error: 'Username and password are required for login.' });
+      }
+
+      const isSuperAdmin = username.toLowerCase() === 'aryanath';
+      if (isSuperAdmin) {
+        if (password !== 'Aryanath@1102') {
+          return res.status(401).json({ error: 'Invalid password for Administrator Aryanath.' });
+        }
+      }
+
       const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
-      const name = username.charAt(0).toUpperCase() + username.slice(1);
-      const userRole = username.includes('admin') || role === 'admin' ? 'admin' : 'student';
+      const displayName = isSuperAdmin ? 'Aryanath (Enterprise Administrator)' : (name || username);
+      const userRole = isSuperAdmin ? 'admin' : (role === 'admin' ? 'admin' : 'student');
 
       const newSession = {
         sessionId,
-        userId: `usr_${username}`,
-        username,
-        email: username.includes('@') ? username : `${username}@sap-mastery.io`,
+        userId: isSuperAdmin ? 'usr_admin_aryanath' : `usr_${username.toLowerCase()}`,
+        username: isSuperAdmin ? 'Aryanath' : username,
+        email: username.includes('@') ? username : `${username.toLowerCase()}@sap-mastery.io`,
         role: userRole,
-        name,
+        name: displayName,
         activeTrack,
         device: req.headers['user-agent']?.includes('Windows') ? 'Windows Desktop' : 'Web Browser',
         ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',

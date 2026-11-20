@@ -11,6 +11,7 @@ import { MentorQuizView } from './views/MentorQuizView';
 import { TrackSelectorView } from './views/TrackSelectorView';
 import { AdminView } from './views/AdminView';
 import { AuthModal } from './components/AuthModal';
+import { LoginScreen } from './components/LoginScreen';
 import { LESSONS } from './data/lessons';
 import { FIORI_LESSONS } from './data/fioriLessons';
 import {
@@ -21,7 +22,8 @@ import {
   updateProjectStep,
   fetchCurrentSession,
   fetchActiveSessions,
-  fetchBroadcast
+  fetchBroadcast,
+  logout
 } from './services/api';
 import { Megaphone, X, Sparkles } from 'lucide-react';
 
@@ -266,6 +268,18 @@ export function App() {
     }
   };
 
+  const handleLogout = async () => {
+    if (currentSession?.sessionId) {
+      try {
+        await logout(currentSession.sessionId);
+      } catch (err) {
+        console.warn('Logout error:', err);
+      }
+    }
+    setCurrentSession(null);
+    showToast('Signed out successfully. Session terminated.', 'info');
+  };
+
   // Readiness calculation
   const daysCount = progress.completed_days?.length || 0;
   const exCount = progress.solved_exercises?.length || 0;
@@ -275,6 +289,35 @@ export function App() {
     100,
     Math.round(((daysCount / totalDays) * 45) + ((exCount / totalDays) * 35) + ((quizBest / 10) * 20))
   );
+
+  // 1. Initial State Loading Spinner
+  if (loading) {
+    return (
+      <div className="min-h-screen flex flex-col items-center justify-center bg-slate-100 dark:bg-slate-950 text-slate-800 dark:text-slate-200">
+        <div className="w-12 h-12 rounded-2xl bg-indigo-600/20 text-indigo-600 flex items-center justify-center animate-spin mb-4">
+          <Sparkles className="w-6 h-6" />
+        </div>
+        <p className="text-sm font-bold">Connecting to SAP Mastery Hub...</p>
+        <p className="text-xs text-slate-500 mt-1">Verifying Clean Core Security &amp; Session Tokens</p>
+      </div>
+    );
+  }
+
+  // 2. Strict Authentication Gate: Without login, NOTHING can be accessed
+  if (!currentSession) {
+    return (
+      <>
+        {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
+        <LoginScreen
+          onLoginSuccess={(sess) => {
+            setCurrentSession(sess);
+            fetchActiveSessions().then(setActiveSessions);
+            showToast(`Welcome to SAP Studio, ${sess.name}!`, 'success');
+          }}
+        />
+      </>
+    );
+  }
 
   return (
     <div className="min-h-screen flex flex-col bg-slate-50 text-slate-900 dark:bg-slate-950 dark:text-slate-100 transition-colors duration-200">
@@ -291,6 +334,7 @@ export function App() {
         activeSessionsCount={activeSessions.length || 1}
         onOpenAuth={() => setAuthModalOpen(true)}
         onNavigate={(view) => handleNavigate(view, activeLessonId, '', true)}
+        onLogout={handleLogout}
       />
 
       {/* Global Broadcast Announcement Banner (from Admin) */}

@@ -20,19 +20,23 @@ const KEYS = {
 
 const DEFAULT_USERS = [
   {
-    id: 'usr_admin',
-    username: 'admin',
-    email: 'admin@sap-mastery.io',
+    id: 'usr_admin_aryanath',
+    username: 'Aryanath',
+    email: 'aryanath@sap-mastery.io',
+    password: 'Aryanath@1102',
     role: 'admin',
-    name: 'Enterprise SAP Architect (Admin)',
+    name: 'Aryanath (Enterprise Administrator)',
+    status: 'approved',
     created_at: '2026-01-01T00:00:00.000Z'
   },
   {
     id: 'usr_dev',
     username: 'developer',
     email: 'developer@sap-mastery.io',
+    password: 'password123',
     role: 'student',
     name: 'Alex Rivera (Full-Stack Engineer)',
+    status: 'approved',
     created_at: '2026-01-05T00:00:00.000Z'
   }
 ];
@@ -248,33 +252,119 @@ export function generateLocalExportUrl() {
 
 // 7. Concurrent Authentication & Session Management
 export function getAllUsers() {
-  const users = readJson(KEYS.USERS, null);
-  if (!users) {
+  let users = readJson(KEYS.USERS, null);
+  if (!users || !Array.isArray(users)) {
     writeJson(KEYS.USERS, DEFAULT_USERS);
     return DEFAULT_USERS;
   }
+
+  // Ensure primary SuperAdmin Aryanath is always seeded and approved
+  const adminIndex = users.findIndex(u => u.username.toLowerCase() === 'aryanath');
+  if (adminIndex === -1) {
+    users = [DEFAULT_USERS[0], ...users];
+    writeJson(KEYS.USERS, users);
+  } else {
+    // Keep password, role and status guaranteed
+    if (users[adminIndex].password !== 'Aryanath@1102' || users[adminIndex].role !== 'admin' || users[adminIndex].status !== 'approved') {
+      users[adminIndex].password = 'Aryanath@1102';
+      users[adminIndex].role = 'admin';
+      users[adminIndex].status = 'approved';
+      writeJson(KEYS.USERS, users);
+    }
+  }
+
   return users;
 }
 
 export function registerUser({ username, email, password, role = 'student', name = '' }) {
+  if (!username || !username.trim()) {
+    throw new Error('Username is required.');
+  }
+  if (!password || !password.trim()) {
+    throw new Error('Password is required.');
+  }
+
   const users = getAllUsers();
-  const existing = users.find(u => u.username.toLowerCase() === username.toLowerCase() || u.email.toLowerCase() === email.toLowerCase());
+  const trimmedUser = username.trim();
+  const trimmedEmail = (email || `${trimmedUser}@sap-mastery.io`).trim().toLowerCase();
+
+  const existing = users.find(
+    u => u.username.toLowerCase() === trimmedUser.toLowerCase() || u.email.toLowerCase() === trimmedEmail.toLowerCase()
+  );
   if (existing) {
-    throw new Error('User with this username or email already exists.');
+    throw new Error(`An account with username '${trimmedUser}' or email '${trimmedEmail}' already exists.`);
   }
 
   const newUser = {
     id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-    username: username.trim(),
-    email: email.trim().toLowerCase(),
+    username: trimmedUser,
+    email: trimmedEmail,
+    password: password.trim(),
     role: role === 'admin' ? 'admin' : 'student',
-    name: name.trim() || username.trim(),
+    name: name.trim() || trimmedUser,
+    status: 'pending_approval', // Requires Admin (Aryanath) approval before login
     created_at: new Date().toISOString()
   };
 
   const updatedUsers = [...users, newUser];
   writeJson(KEYS.USERS, updatedUsers);
-  return loginUser({ usernameOrEmail: newUser.username, password });
+
+  return {
+    success: true,
+    pendingApproval: true,
+    user: {
+      id: newUser.id,
+      username: newUser.username,
+      email: newUser.email,
+      name: newUser.name,
+      status: newUser.status
+    },
+    message: 'Registration request submitted! Your account is pending Administrator approval from Aryanath.'
+  };
+}
+
+export function getPendingUsers() {
+  const users = getAllUsers();
+  return users.filter(u => u.status === 'pending_approval');
+}
+
+export function approveUser(userId) {
+  const users = getAllUsers();
+  const target = users.find(u => u.id === userId);
+  if (!target) throw new Error('User not found.');
+
+  target.status = 'approved';
+  writeJson(KEYS.USERS, users);
+  return target;
+}
+
+export function rejectUser(userId) {
+  const users = getAllUsers();
+  const target = users.find(u => u.id === userId);
+  if (!target) throw new Error('User not found.');
+
+  target.status = 'rejected';
+  writeJson(KEYS.USERS, users);
+  // Also terminate any sessions for this user
+  const sessions = getActiveSessions().filter(s => s.userId !== userId);
+  writeJson(KEYS.SESSIONS, sessions);
+  return target;
+}
+
+export function deleteUser(userId) {
+  const users = getAllUsers();
+  const target = users.find(u => u.id === userId);
+  if (!target) throw new Error('User not found.');
+  if (target.username.toLowerCase() === 'aryanath') {
+    throw new Error('Cannot delete primary Administrator Aryanath.');
+  }
+
+  const updated = users.filter(u => u.id !== userId);
+  writeJson(KEYS.USERS, updated);
+
+  const sessions = getActiveSessions().filter(s => s.userId !== userId);
+  writeJson(KEYS.SESSIONS, sessions);
+  return updated;
 }
 
 export function getActiveSessions() {
@@ -290,78 +380,77 @@ export function getActiveSessions() {
 
 export function getCurrentSession() {
   const activeId = localStorage.getItem(KEYS.ACTIVE_SESSION);
+  if (!activeId) return null;
+
   const sessions = getActiveSessions();
-  if (activeId) {
-    const found = sessions.find(s => s.sessionId === activeId);
-    if (found) {
-      // Refresh heartbeat
-      found.lastHeartbeat = new Date().toISOString();
-      writeJson(KEYS.SESSIONS, sessions);
-      return found;
-    }
+  const found = sessions.find(s => s.sessionId === activeId);
+  if (found) {
+    // Refresh heartbeat
+    found.lastHeartbeat = new Date().toISOString();
+    writeJson(KEYS.SESSIONS, sessions);
+    return found;
   }
 
-  // If no session exists, initialize default developer session
-  if (sessions.length > 0) {
-    localStorage.setItem(KEYS.ACTIVE_SESSION, sessions[0].sessionId);
-    return sessions[0];
-  }
-
-  const defaultUser = getAllUsers()[1] || DEFAULT_USERS[1];
-  const newSession = {
-    sessionId: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
-    userId: defaultUser.id,
-    username: defaultUser.username,
-    email: defaultUser.email,
-    role: defaultUser.role,
-    name: defaultUser.name,
-    activeTrack: localStorage.getItem(KEYS.TRACK) || 'rap',
-    device: navigator.userAgent.includes('Windows') ? 'Windows Desktop' : navigator.userAgent.includes('Mac') ? 'macOS Desktop' : 'Mobile / Tablet',
-    ip: '127.0.0.1 (Local)',
-    loginTime: new Date().toISOString(),
-    lastHeartbeat: new Date().toISOString()
-  };
-
-  writeJson(KEYS.SESSIONS, [newSession]);
-  localStorage.setItem(KEYS.ACTIVE_SESSION, newSession.sessionId);
-  return newSession;
+  // Session not found or expired: clear active session
+  localStorage.removeItem(KEYS.ACTIVE_SESSION);
+  return null;
 }
 
-export function loginUser({ usernameOrEmail, password, role = 'student' }) {
-  const users = getAllUsers();
-  const input = usernameOrEmail.trim().toLowerCase();
-  let user = users.find(u => u.username.toLowerCase() === input || u.email.toLowerCase() === input);
-
-  if (!user) {
-    // Auto-create user if not found
-    user = {
-      id: `usr_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-      username: usernameOrEmail.trim().replace(/\s+/g, '_').toLowerCase(),
-      email: input.includes('@') ? input : `${input}@sap-mastery.io`,
-      role: role === 'admin' ? 'admin' : 'student',
-      name: usernameOrEmail.trim(),
-      created_at: new Date().toISOString()
-    };
-    writeJson(KEYS.USERS, [...users, user]);
+export function loginUser({ usernameOrEmail, password, role }) {
+  if (!usernameOrEmail || !usernameOrEmail.trim()) {
+    throw new Error('Username or email is required.');
+  }
+  if (!password || !password.trim()) {
+    throw new Error('Password is required.');
   }
 
-  // Create a new concurrent session
+  const users = getAllUsers();
+  const input = usernameOrEmail.trim().toLowerCase();
+  const trimmedPassword = password.trim();
+
+  const user = users.find(
+    u => u.username.toLowerCase() === input || u.email.toLowerCase() === input
+  );
+
+  if (!user) {
+    throw new Error('Account not found. Please register or check your username/email.');
+  }
+
+  // Password verification
+  if (user.password !== trimmedPassword) {
+    throw new Error('Incorrect password. Please verify your credentials.');
+  }
+
+  // Approval status check
+  if (user.status === 'pending_approval') {
+    throw new Error(
+      `Your account (${user.username}) is pending Administrator approval. Please wait for Aryanath to approve your access in the Admin Control Center.`
+    );
+  }
+
+  if (user.status === 'rejected') {
+    throw new Error('Your registration request was rejected by the administrator. Contact support for re-evaluation.');
+  }
+
+  // Single-session enforcement / clean session creation
+  // End prior sessions for this user to ensure clean single logon
+  const otherSessions = getActiveSessions().filter(s => s.userId !== user.id);
+
   const newSession = {
     sessionId: `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
     userId: user.id,
     username: user.username,
     email: user.email,
-    role: user.role,
-    name: user.name,
+    role: user.role || (user.username.toLowerCase() === 'aryanath' ? 'admin' : 'student'),
+    name: user.name || user.username,
     activeTrack: localStorage.getItem(KEYS.TRACK) || 'rap',
-    device: navigator.userAgent.includes('Windows') ? 'Windows Desktop' : navigator.userAgent.includes('Mac') ? 'macOS Desktop' : 'Mobile / Tablet',
-    ip: '127.0.0.1 (Local)',
+    device: navigator.userAgent.includes('Windows') ? 'Windows Desktop' : navigator.userAgent.includes('Mac') ? 'macOS Desktop' : 'Web Browser',
+    ip: '127.0.0.1 (Authenticated)',
     loginTime: new Date().toISOString(),
     lastHeartbeat: new Date().toISOString()
   };
 
-  const currentSessions = getActiveSessions().filter(s => s.sessionId !== newSession.sessionId);
-  const updatedSessions = [newSession, ...currentSessions];
+  const updatedSessions = [newSession, ...otherSessions];
   writeJson(KEYS.SESSIONS, updatedSessions);
   localStorage.setItem(KEYS.ACTIVE_SESSION, newSession.sessionId);
 
@@ -374,11 +463,7 @@ export function logoutSession(sessionId) {
 
   const activeId = localStorage.getItem(KEYS.ACTIVE_SESSION);
   if (activeId === sessionId) {
-    if (sessions.length > 0) {
-      localStorage.setItem(KEYS.ACTIVE_SESSION, sessions[0].sessionId);
-    } else {
-      localStorage.removeItem(KEYS.ACTIVE_SESSION);
-    }
+    localStorage.removeItem(KEYS.ACTIVE_SESSION);
   }
   return sessions;
 }
