@@ -16,7 +16,19 @@ import {
   getLocalMentorMessages,
   sendLocalMentorChat,
   clearLocalMentorMessages,
-  generateLocalExportUrl
+  generateLocalExportUrl,
+  getAllUsers,
+  registerUser,
+  getActiveSessions,
+  getCurrentSession,
+  loginUser,
+  logoutSession,
+  switchActiveSession,
+  adminKickSession,
+  updateUserRole,
+  getBroadcastAnnouncement,
+  setBroadcastAnnouncement,
+  getVercelDbDiagnostics
 } from './localDatabase';
 
 const API_BASE = '/api';
@@ -190,4 +202,87 @@ export function getExportUrl() {
   } catch {
     return `${API_BASE}/export`;
   }
+}
+
+// 7. Concurrent Authentication & Session APIs
+export async function fetchCurrentSession() {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/session`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Local fallback
+  }
+  return getCurrentSession();
+}
+
+export async function fetchActiveSessions() {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/sessions`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Local fallback
+  }
+  return getActiveSessions();
+}
+
+export async function login(credentials) {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(credentials)
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Local fallback
+  }
+  return loginUser(credentials);
+}
+
+export async function logout(sessionId) {
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/auth/logout`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ sessionId })
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Local fallback
+  }
+  return logoutSession(sessionId);
+}
+
+export async function switchSession(sessionId) {
+  return switchActiveSession(sessionId);
+}
+
+export function register(userData) {
+  return registerUser(userData);
+}
+
+export { registerUser };
+
+export async function kickSession(sessionId) {
+  return adminKickSession(sessionId);
+}
+
+export async function fetchAllUsers() {
+  return getAllUsers();
+}
+
+export async function promoteUser(userId, newRole) {
+  return updateUserRole(userId, newRole);
+}
+
+export async function fetchBroadcast() {
+  return getBroadcastAnnouncement();
+}
+
+export async function updateBroadcast(msg) {
+  return setBroadcastAnnouncement(msg);
+}
+
+export async function fetchVercelDbDiagnostics() {
+  return getVercelDbDiagnostics();
 }

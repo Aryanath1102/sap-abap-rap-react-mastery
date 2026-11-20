@@ -8,21 +8,29 @@ import { LessonsView } from './views/LessonsView';
 import { ProjectsView } from './views/ProjectsView';
 import { ArchitectureView } from './views/ArchitectureView';
 import { MentorQuizView } from './views/MentorQuizView';
+import { TrackSelectorView } from './views/TrackSelectorView';
+import { AdminView } from './views/AdminView';
+import { AuthModal } from './components/AuthModal';
 import { LESSONS } from './data/lessons';
+import { FIORI_LESSONS } from './data/fioriLessons';
 import {
   fetchProgress,
   updateProgress,
   resetProgress,
   fetchProjectChecklists,
-  updateProjectStep
+  updateProjectStep,
+  fetchCurrentSession,
+  fetchActiveSessions,
+  fetchBroadcast
 } from './services/api';
+import { Megaphone, X, Sparkles } from 'lucide-react';
 
 // Progression Locking Rule:
-// Day 1 is always unlocked.
+// Day 0 & Day 1 are always unlocked.
 // Day N is unlocked ONLY if Day N - 1 is completed or its exercise is solved.
 export function isDayUnlocked(dayNumber, completedDays = [], solvedExercises = []) {
   if (dayNumber <= 1) return true;
-  const prevLesson = LESSONS.find(l => l.day === dayNumber - 1);
+  const prevLesson = LESSONS.find(l => l.day === dayNumber - 1) || FIORI_LESSONS.find(l => l.day === dayNumber - 1);
   const prevDayCompleted = completedDays.includes(dayNumber - 1);
   const prevExerciseSolved = prevLesson && solvedExercises.includes(prevLesson.id);
   return Boolean(prevDayCompleted || prevExerciseSolved);
@@ -30,9 +38,20 @@ export function isDayUnlocked(dayNumber, completedDays = [], solvedExercises = [
 
 export function App() {
   const [currentView, setCurrentView] = useState('dashboard');
-  const [activeLessonId, setActiveLessonId] = useState('day-1-modern-abap');
+  const [activeTrack, setActiveTrack] = useState(() => localStorage.getItem('sap_mastery_active_track') || 'rap');
+  const [activeLessonId, setActiveLessonId] = useState(() => {
+    const track = localStorage.getItem('sap_mastery_active_track') || 'rap';
+    return track === 'fiori' ? 'fiori-mod-1-fundamentals' : 'day-1-modern-abap';
+  });
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
+
+  // Authentication & Concurrent Sessions State
+  const [authModalOpen, setAuthModalOpen] = useState(false);
+  const [currentSession, setCurrentSession] = useState(null);
+  const [activeSessions, setActiveSessions] = useState([]);
+  const [broadcast, setBroadcast] = useState(null);
+  const [broadcastDismissed, setBroadcastDismissed] = useState(false);
 
   // App state loaded from SQLite - default streak is 0 until user earns it
   const [progress, setProgress] = useState({
@@ -46,12 +65,34 @@ export function App() {
   const [projectChecklists, setProjectChecklists] = useState({});
   const [loading, setLoading] = useState(true);
 
+  // Active dataset based on track
+  const activeLessons = activeTrack === 'fiori' ? FIORI_LESSONS : LESSONS;
+
+  // Track switcher handler
+  const handleSelectTrack = (trackId) => {
+    setActiveTrack(trackId);
+    localStorage.setItem('sap_mastery_active_track', trackId);
+    if (trackId === 'fiori') {
+      setActiveLessonId('fiori-mod-1-fundamentals');
+      showToast('Switched to SAP Fiori Track: Elements, Freestyle SAPUI5 & Cloud Launchpad', 'success');
+    } else {
+      setActiveLessonId('day-1-modern-abap');
+      showToast('Switched to SAP ABAP RAP Track: Clean Core & RESTful Application Programming', 'info');
+    }
+  };
+
   // Full Browser History (PushState & PopState) Integration
   useEffect(() => {
     // Read initial URL params on first mount
     const params = new URLSearchParams(window.location.search);
     const initialView = params.get('view');
     const initialLesson = params.get('lesson');
+    const initialTrack = params.get('track');
+
+    if (initialTrack && (initialTrack === 'fiori' || initialTrack === 'rap')) {
+      setActiveTrack(initialTrack);
+      localStorage.setItem('sap_mastery_active_track', initialTrack);
+    }
     if (initialView) setCurrentView(initialView);
     if (initialLesson) setActiveLessonId(initialLesson);
 
@@ -68,10 +109,12 @@ export function App() {
     const handlePopState = (event) => {
       const searchParams = new URLSearchParams(window.location.search);
       const view = searchParams.get('view') || event.state?.view || 'dashboard';
-      const lesson = searchParams.get('lesson') || event.state?.lessonId || 'day-1-modern-abap';
+      const lesson = searchParams.get('lesson') || event.state?.lessonId || (activeTrack === 'fiori' ? 'fiori-mod-1-fundamentals' : 'day-1-modern-abap');
+      const track = searchParams.get('track') || event.state?.track || activeTrack;
 
       setCurrentView(view);
       setActiveLessonId(lesson);
+      setActiveTrack(track);
 
       if (window.location.hash) {
         const targetId = window.location.hash.substring(1);
@@ -92,8 +135,8 @@ export function App() {
     if (lessonId) setActiveLessonId(lessonId);
 
     if (pushHistory) {
-      const query = `?view=${view}${view === 'lessons' ? `&lesson=${lessonId}` : ''}${hash ? `#${hash}` : ''}`;
-      window.history.pushState({ view, lessonId, hash }, '', query);
+      const query = `?view=${view}&track=${activeTrack}${view === 'lessons' ? `&lesson=${lessonId}` : ''}${hash ? `#${hash}` : ''}`;
+      window.history.pushState({ view, lessonId, track: activeTrack, hash }, '', query);
     }
 
     if (hash) {
@@ -106,31 +149,36 @@ export function App() {
 
   // Safe chapter selection enforcing progression lock
   const handleSelectLesson = (lessonId, pushHistory = true) => {
-    const target = LESSONS.find(l => l.id === lessonId);
+    const target = activeLessons.find(l => l.id === lessonId);
     if (target && !isDayUnlocked(target.day, progress.completed_days, progress.solved_exercises)) {
-      showToast(`🔒 Day ${target.day} is locked! Complete Day ${target.day - 1} and its final assignment to unlock this chapter.`, 'error');
+      showToast(`🔒 ${target.title} is locked! Complete the previous assignment first to unlock.`, 'error');
       return;
     }
     setActiveLessonId(lessonId);
     handleNavigate('lessons', lessonId, '', pushHistory);
   };
 
-  // Load initial state from SQLite backend
+  // Load initial state & active sessions from backend / local DB
   useEffect(() => {
     async function loadInitialData() {
       try {
         setLoading(true);
-        const [progData, checklistsData] = await Promise.all([
+        const [progData, checklistsData, currentSess, sessionsList, bCast] = await Promise.all([
           fetchProgress(),
-          fetchProjectChecklists()
+          fetchProjectChecklists(),
+          fetchCurrentSession(),
+          fetchActiveSessions(),
+          fetchBroadcast()
         ]);
 
         setProgress(progData);
         setProjectChecklists(checklistsData);
+        setCurrentSession(currentSess);
+        setActiveSessions(sessionsList);
+        setBroadcast(bCast);
         applyThemeClass(progData.active_theme || 'light');
       } catch (err) {
         console.warn('Backend loading warning:', err.message);
-        showToast('Connected in offline mode or initial sync pending.', 'info');
       } finally {
         setLoading(false);
       }
@@ -158,56 +206,29 @@ export function App() {
     const newTheme = progress.active_theme === 'dark' ? 'light' : 'dark';
     applyThemeClass(newTheme);
     setProgress(prev => ({ ...prev, active_theme: newTheme }));
-
     try {
-      await updateProgress({ active_theme: newTheme });
-      showToast(`Switched to ${newTheme} theme.`);
+      await updateProgress({ ...progress, active_theme: newTheme });
     } catch (err) {
-      console.warn('Could not persist theme:', err);
+      console.warn('Could not save theme:', err);
     }
   };
 
   const handleToggleDay = async (dayNumber) => {
-    // Cannot mark Day N done unless Day N is unlocked
-    if (!isDayUnlocked(dayNumber, progress.completed_days, progress.solved_exercises)) {
-      showToast(`🔒 Cannot complete Day ${dayNumber} yet! Complete Day ${dayNumber - 1} first.`, 'error');
-      return;
-    }
+    const currentCompleted = progress.completed_days || [];
+    const isCompleted = currentCompleted.includes(dayNumber);
+    const updatedDays = isCompleted
+      ? currentCompleted.filter(d => d !== dayNumber)
+      : [...currentCompleted, dayNumber].sort((a, b) => a - b);
 
-    const current = progress.completed_days || [];
-    let updated;
-    if (current.includes(dayNumber)) {
-      updated = current.filter(d => d !== dayNumber);
-      showToast(`Day ${dayNumber} unmarked.`);
-    } else {
-      updated = [...current, dayNumber];
-      showToast(`Day ${dayNumber} completed! Great work!`, 'success');
-    }
-
-    setProgress(prev => ({ ...prev, completed_days: updated }));
-    try {
-      await updateProgress({ completed_days: updated });
-    } catch (err) {
-      showToast(`Sync error: ${err.message}`, 'error');
-    }
-  };
-
-  const handleToggleProjectStep = async (projectId, stepIndex, completed) => {
-    const currentList = projectChecklists[projectId] || [];
-    let updatedList;
-    if (completed) {
-      updatedList = currentList.includes(stepIndex) ? currentList : [...currentList, stepIndex];
-    } else {
-      updatedList = currentList.filter(s => s !== stepIndex);
-    }
-
-    setProjectChecklists(prev => ({ ...prev, [projectId]: updatedList }));
+    const newStreak = updatedDays.length;
+    const updatedState = { ...progress, completed_days: updatedDays, streak: newStreak };
+    setProgress(updatedState);
 
     try {
-      await updateProjectStep(projectId, stepIndex, completed);
-      showToast(completed ? 'Step checked and saved.' : 'Step unchecked.');
+      await updateProgress(updatedState);
+      showToast(isCompleted ? `Day ${dayNumber} unmarked` : `🎉 Day ${dayNumber} completed! Streak: ${newStreak} day(s)`);
     } catch (err) {
-      showToast(`Checklist error: ${err.message}`, 'error');
+      showToast('Progress saved locally', 'info');
     }
   };
 
@@ -215,17 +236,31 @@ export function App() {
     try {
       const reset = await resetProgress();
       setProgress(reset);
-      setProjectChecklists({});
-      showToast('All learning progress reset to zero.', 'info');
+      showToast('All progress reset to Day 1 baseline.', 'info');
     } catch (err) {
-      showToast(`Reset error: ${err.message}`, 'error');
+      showToast('Error resetting progress', 'error');
+    }
+  };
+
+  const handleToggleProjectStep = async (projectId, stepIndex) => {
+    const current = projectChecklists[projectId] || [];
+    const updated = current.includes(stepIndex)
+      ? current.filter(i => i !== stepIndex)
+      : [...current, stepIndex];
+
+    setProjectChecklists(prev => ({ ...prev, [projectId]: updated }));
+
+    try {
+      await updateProjectStep(projectId, updated);
+    } catch (err) {
+      console.warn('Could not save project step:', err);
     }
   };
 
   const reloadProgress = async () => {
     try {
-      const data = await fetchProgress();
-      setProgress(data);
+      const refreshed = await fetchProgress();
+      setProgress(refreshed);
     } catch (err) {
       console.warn('Could not reload progress:', err);
     }
@@ -235,9 +270,10 @@ export function App() {
   const daysCount = progress.completed_days?.length || 0;
   const exCount = progress.solved_exercises?.length || 0;
   const quizBest = progress.best_quiz_score || 0;
+  const totalDays = activeTrack === 'fiori' ? 6 : 15;
   const readinessPct = Math.min(
     100,
-    Math.round(((daysCount / 14) * 45) + ((exCount / 14) * 35) + ((quizBest / 10) * 20))
+    Math.round(((daysCount / totalDays) * 45) + ((exCount / totalDays) * 35) + ((quizBest / 10) * 20))
   );
 
   return (
@@ -249,9 +285,32 @@ export function App() {
         onToggleTheme={handleToggleTheme}
         onToggleMobileSidebar={() => setMobileSidebarOpen(prev => !prev)}
         onShowToast={showToast}
+        activeTrack={activeTrack}
+        onSelectTrack={handleSelectTrack}
+        currentSession={currentSession}
+        activeSessionsCount={activeSessions.length || 1}
+        onOpenAuth={() => setAuthModalOpen(true)}
+        onNavigate={(view) => handleNavigate(view, activeLessonId, '', true)}
       />
 
-      {/* Main Workspace Frame - allows sticky sidebar to track natural document flow */}
+      {/* Global Broadcast Announcement Banner (from Admin) */}
+      {broadcast?.active && broadcast?.message && !broadcastDismissed && (
+        <div className="bg-gradient-to-r from-indigo-600 via-sky-600 to-indigo-700 text-white px-4 py-2 text-xs font-semibold flex items-center justify-between gap-3 shadow-sm">
+          <div className="flex items-center gap-2 min-w-0 mx-auto max-w-5xl">
+            <Megaphone className="w-4 h-4 shrink-0 text-amber-300 animate-bounce" />
+            <span className="truncate">{broadcast.message}</span>
+          </div>
+          <button
+            onClick={() => setBroadcastDismissed(true)}
+            className="p-1 rounded-lg hover:bg-white/20 transition shrink-0"
+            aria-label="Dismiss Alert"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Main Workspace Frame */}
       <div className="flex-1 flex max-w-[1536px] w-full mx-auto relative items-start">
         {/* Sticky Left Sidebar */}
         <Sidebar
@@ -260,10 +319,30 @@ export function App() {
           progressStats={{ readinessPct }}
           isOpen={mobileSidebarOpen}
           onCloseMobile={() => setMobileSidebarOpen(false)}
+          activeTrack={activeTrack}
+          currentSession={currentSession}
         />
 
         {/* Main Content Area */}
         <main className="flex-1 min-w-0 p-4 sm:p-6 lg:p-8">
+          {/* TRACKS / LEARNING PATHS PARENT MODULE */}
+          {currentView === 'tracks' && (
+            <TrackSelectorView
+              activeTrack={activeTrack}
+              onSelectTrack={handleSelectTrack}
+              onNavigate={(view) => handleNavigate(view, activeLessonId, '', true)}
+            />
+          )}
+
+          {/* ADMIN CONTROL CENTER */}
+          {currentView === 'admin' && (
+            <AdminView
+              currentSession={currentSession}
+              onShowToast={showToast}
+              onSessionChange={setCurrentSession}
+            />
+          )}
+
           {currentView === 'dashboard' && (
             <DashboardView
               progress={progress}
@@ -293,6 +372,7 @@ export function App() {
               onNavigate={(view) => handleNavigate(view, activeLessonId, '', true)}
               onShowToast={showToast}
               onRefreshProgress={reloadProgress}
+              lessons={activeLessons}
             />
           )}
 
@@ -319,6 +399,19 @@ export function App() {
           )}
         </main>
       </div>
+
+      {/* Concurrent Authentication Modal */}
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        currentSession={currentSession}
+        activeSessions={activeSessions}
+        onSessionChange={(sess) => {
+          setCurrentSession(sess);
+          fetchActiveSessions().then(setActiveSessions);
+        }}
+        onShowToast={showToast}
+      />
 
       {/* Floating SaaS Toast Notification */}
       <Toast toast={toast} onClose={() => setToast(null)} />

@@ -45,12 +45,13 @@ export function LessonsView({
   solvedExercises = [],
   onNavigate,
   onShowToast,
-  onRefreshProgress
+  onRefreshProgress,
+  lessons = LESSONS
 }) {
-  const currentLesson = LESSONS.find(l => l.id === activeLessonId) || LESSONS[0];
-  const currentIndex = LESSONS.findIndex(l => l.id === currentLesson.id);
-  const prevLesson = currentIndex > 0 ? LESSONS[currentIndex - 1] : null;
-  const nextLesson = currentIndex < LESSONS.length - 1 ? LESSONS[currentIndex + 1] : null;
+  const currentLesson = lessons.find(l => l.id === activeLessonId) || lessons[0];
+  const currentIndex = lessons.findIndex(l => l.id === currentLesson.id);
+  const prevLesson = currentIndex > 0 ? lessons[currentIndex - 1] : null;
+  const nextLesson = currentIndex < lessons.length - 1 ? lessons[currentIndex + 1] : null;
 
   const assignments = currentLesson.assignments || (currentLesson.assignment ? [currentLesson.assignment] : []);
   const [activeAssignmentIndex, setActiveAssignmentIndex] = useState(0);
@@ -263,7 +264,13 @@ export function LessonsView({
             <div className="flex flex-wrap items-center gap-2">
               <span className="text-xs font-mono font-bold px-3 py-1 rounded-lg bg-sky-600 text-white tracking-wider flex items-center gap-1.5 shadow-xs">
                 <BookOpen className="w-3.5 h-3.5" />
-                <span>{currentLesson.day === 0 ? 'PREREQUISITE FOUNDATIONS' : `CHAPTER ${currentLesson.day} OF 14`}</span>
+                <span>
+                  {currentLesson.day === 0
+                    ? 'PREREQUISITE FOUNDATIONS'
+                    : (currentLesson.track === 'fiori'
+                        ? `MODULE ${currentLesson.day} OF 6`
+                        : `CHAPTER ${currentLesson.day} OF 14`)}
+                </span>
               </span>
               <span className="text-xs font-semibold px-2.5 py-1 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 flex items-center gap-1">
                 <Clock className="w-3.5 h-3.5 text-slate-400" />
@@ -297,13 +304,16 @@ export function LessonsView({
               onChange={(e) => onSelectLesson(e.target.value)}
               className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-xs"
             >
-              {LESSONS.map((l) => {
+              {lessons.map((l) => {
                 const unlocked = isDayUnlocked(l.day, completedDays, solvedExercises);
+                const titleLabel = l.track === 'fiori'
+                  ? `Module ${l.day}: ${l.title.replace(/^Module \d+:\s*/, '')}`
+                  : (l.day === 0
+                      ? '🚀 Day 0 (Prerequisites): Modern ABAP Core Mechanics'
+                      : `Day ${l.day}: ${l.title.replace(/^Day \d+:\s*/, '')}`);
                 return (
                   <option key={l.id} value={l.id} disabled={!unlocked}>
-                    {unlocked
-                      ? (l.day === 0 ? '🚀 Day 0 (Prerequisites): Modern ABAP Core Mechanics' : `Day ${l.day}: ${l.title.replace(/^Day \d+:\s*/, '')}`)
-                      : `🔒 Day ${l.day}: ${l.title.replace(/^Day \d+:\s*/, '')} (Complete Day ${l.day - 1} First)`}
+                    {unlocked ? titleLabel : `🔒 ${titleLabel} (Complete Previous First)`}
                   </option>
                 );
               })}

@@ -1,0 +1,432 @@
+import React, { useState, useEffect } from 'react';
+import {
+  ShieldCheck,
+  Users,
+  Radio,
+  Server,
+  Database,
+  Megaphone,
+  Laptop,
+  LogOut,
+  UserPlus,
+  RefreshCw,
+  Download,
+  CheckCircle2,
+  AlertTriangle,
+  Lock,
+  Unlock,
+  KeyRound
+} from 'lucide-react';
+import {
+  fetchAllUsers,
+  fetchActiveSessions,
+  kickSession,
+  promoteUser,
+  fetchBroadcast,
+  updateBroadcast,
+  fetchVercelDbDiagnostics,
+  getExportUrl
+} from '../services/api';
+
+export function AdminView({ currentSession, onShowToast, onSessionChange }) {
+  const [activeTab, setActiveTab] = useState('sessions'); // 'sessions' | 'users' | 'broadcast' | 'database'
+  const [users, setUsers] = useState([]);
+  const [sessions, setSessions] = useState([]);
+  const [broadcast, setBroadcast] = useState({ active: true, message: '' });
+  const [dbDiag, setDbDiag] = useState(null);
+  const [loading, setLoading] = useState(true);
+  const [newBroadcastMsg, setNewBroadcastMsg] = useState('');
+
+  const isAdmin = currentSession?.role === 'admin';
+
+  const loadData = async () => {
+    try {
+      setLoading(true);
+      const [uList, sList, bCast, diag] = await Promise.all([
+        fetchAllUsers(),
+        fetchActiveSessions(),
+        fetchBroadcast(),
+        fetchVercelDbDiagnostics()
+      ]);
+      setUsers(uList);
+      setSessions(sList);
+      setBroadcast(bCast);
+      setNewBroadcastMsg(bCast.message || '');
+      setDbDiag(diag);
+    } catch (err) {
+      console.warn('Admin load error:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  useEffect(() => {
+    loadData();
+    const interval = setInterval(loadData, 8000); // Poll active sessions
+    return () => clearInterval(interval);
+  }, []);
+
+  const handleKick = async (sessionId) => {
+    try {
+      await kickSession(sessionId);
+      onShowToast?.('Session terminated remotely', 'info');
+      loadData();
+    } catch (err) {
+      onShowToast?.(err.message, 'error');
+    }
+  };
+
+  const handleToggleRole = async (userId, currentRole) => {
+    try {
+      const targetRole = currentRole === 'admin' ? 'student' : 'admin';
+      await promoteUser(userId, targetRole);
+      onShowToast?.(`User role updated to ${targetRole.toUpperCase()}`, 'success');
+      loadData();
+    } catch (err) {
+      onShowToast?.(err.message, 'error');
+    }
+  };
+
+  const handleSaveBroadcast = async (e) => {
+    e.preventDefault();
+    try {
+      const res = await updateBroadcast(newBroadcastMsg);
+      setBroadcast(res);
+      onShowToast?.('Broadcast alert updated for all concurrent users!', 'success');
+    } catch (err) {
+      onShowToast?.(err.message, 'error');
+    }
+  };
+
+  if (!isAdmin) {
+    return (
+      <div className="max-w-2xl mx-auto py-12 text-center space-y-4">
+        <div className="w-16 h-16 mx-auto rounded-3xl bg-amber-100 dark:bg-amber-950/60 border border-amber-300 dark:border-amber-800 text-amber-600 dark:text-amber-400 flex items-center justify-center">
+          <Lock className="w-8 h-8" />
+        </div>
+        <h2 className="text-2xl font-black text-slate-900 dark:text-white">
+          Administrator Privilege Required
+        </h2>
+        <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
+          You are currently signed in as <strong>{currentSession?.name || 'Student'}</strong> with role <code>{currentSession?.role || 'student'}</code>. Sign in as Admin to access live session monitoring, user role management, and database tools.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="space-y-8 max-w-6xl mx-auto py-4">
+      {/* Admin Header Banner */}
+      <div className="rounded-3xl bg-gradient-to-r from-slate-900 via-indigo-950 to-slate-900 border border-indigo-900/50 p-6 sm:p-8 text-white shadow-xl flex flex-col md:flex-row md:items-center justify-between gap-5">
+        <div className="space-y-2">
+          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-indigo-500/20 border border-indigo-400/30 text-indigo-300 text-xs font-semibold">
+            <ShieldCheck className="w-3.5 h-3.5 text-indigo-400" />
+            <span>ENTERPRISE CONTROL CENTER</span>
+          </div>
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight">
+            Administrator &amp; Session Dashboard
+          </h1>
+          <p className="text-xs sm:text-sm text-slate-300 max-w-2xl leading-relaxed">
+            Monitor real-time concurrent sessions across ABAP RAP and Fiori tracks, manage user permissions, broadcast announcements, and inspect Vercel Database telemetry.
+          </p>
+        </div>
+
+        <div className="flex items-center gap-2.5 shrink-0">
+          <button
+            onClick={loadData}
+            disabled={loading}
+            className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/20 border border-white/20 text-xs font-semibold flex items-center gap-2 transition"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${loading ? 'animate-spin' : ''}`} />
+            <span>Refresh Telemetry</span>
+          </button>
+          <a
+            href={getExportUrl()}
+            className="px-4 py-2 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold flex items-center gap-2 transition shadow-xs"
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>Export DB Snapshot</span>
+          </a>
+        </div>
+      </div>
+
+      {/* Navigation Tabs */}
+      <div className="flex flex-wrap items-center gap-2 border-b border-slate-200 dark:border-slate-800 pb-3">
+        {[
+          { id: 'sessions', label: `🟢 Live Concurrent Sessions (${sessions.length})`, icon: Radio },
+          { id: 'users', label: `👥 User Management (${users.length})`, icon: Users },
+          { id: 'broadcast', label: '📢 System Broadcast Banner', icon: Megaphone },
+          { id: 'database', label: '🗄️ Vercel Database Diagnostics', icon: Database }
+        ].map((tab) => {
+          const active = activeTab === tab.id;
+          return (
+            <button
+              key={tab.id}
+              onClick={() => setActiveTab(tab.id)}
+              className={`px-4 py-2 rounded-xl text-xs font-semibold transition ${
+                active
+                  ? 'bg-indigo-600 text-white shadow-xs'
+                  : 'bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800'
+              }`}
+            >
+              {tab.label}
+            </button>
+          );
+        })}
+      </div>
+
+      {/* TAB 1: LIVE CONCURRENT SESSIONS */}
+      {activeTab === 'sessions' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Active Concurrent Logins
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Live sessions currently connected to the enterprise learning platform
+              </p>
+            </div>
+            <span className="text-xs font-mono font-bold px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/80 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1.5">
+              <span className="w-2 h-2 rounded-full bg-emerald-500 animate-ping" />
+              <span>{sessions.length} Active Sessions</span>
+            </span>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="p-4">User &amp; Identity</th>
+                    <th className="p-4">Role</th>
+                    <th className="p-4">Current Track</th>
+                    <th className="p-4">Device &amp; IP</th>
+                    <th className="p-4">Logon Timestamp</th>
+                    <th className="p-4 text-right">Action</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {sessions.map((sess) => {
+                    const isSelf = sess.sessionId === currentSession?.sessionId;
+                    return (
+                      <tr key={sess.sessionId} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                        <td className="p-4">
+                          <div className="font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                            <span>{sess.name}</span>
+                            {isSelf && (
+                              <span className="text-[10px] px-1.5 py-0.5 rounded bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 font-mono">
+                                You
+                              </span>
+                            )}
+                          </div>
+                          <div className="text-[11px] text-slate-500 dark:text-slate-400 font-mono">
+                            {sess.email}
+                          </div>
+                        </td>
+                        <td className="p-4">
+                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                            sess.role === 'admin'
+                              ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300 dark:border-indigo-800'
+                              : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-200 dark:border-slate-700'
+                          }`}>
+                            {sess.role}
+                          </span>
+                        </td>
+                        <td className="p-4">
+                          <span className="font-mono font-semibold text-sky-600 dark:text-sky-400 uppercase">
+                            {sess.activeTrack || 'RAP'}
+                          </span>
+                        </td>
+                        <td className="p-4 font-mono text-[11px] text-slate-600 dark:text-slate-400">
+                          <div>{sess.device || 'Desktop Browser'}</div>
+                          <div className="text-slate-400 text-[10px]">{sess.ip}</div>
+                        </td>
+                        <td className="p-4 font-mono text-[11px] text-slate-500">
+                          {new Date(sess.loginTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' })}
+                        </td>
+                        <td className="p-4 text-right">
+                          <button
+                            onClick={() => handleKick(sess.sessionId)}
+                            className="px-3 py-1.5 rounded-xl border border-rose-200 dark:border-rose-900/60 bg-rose-50 dark:bg-rose-950/40 hover:bg-rose-100 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 text-xs font-semibold transition"
+                            title="Terminate this session immediately"
+                          >
+                            Terminate
+                          </button>
+                        </td>
+                      </tr>
+                    );
+                  })}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 2: USER MANAGEMENT */}
+      {activeTab === 'users' && (
+        <div className="space-y-4">
+          <div className="flex items-center justify-between">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 dark:text-white">
+                Registered User Directory
+              </h2>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                Assign administrator roles, manage learning entitlements, and review account records
+              </p>
+            </div>
+          </div>
+
+          <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 overflow-hidden shadow-xs">
+            <div className="overflow-x-auto">
+              <table className="w-full text-left text-xs">
+                <thead className="bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 text-[11px] font-bold uppercase tracking-wider text-slate-400">
+                  <tr>
+                    <th className="p-4">User Name</th>
+                    <th className="p-4">Username / Handle</th>
+                    <th className="p-4">Email</th>
+                    <th className="p-4">Role Privileges</th>
+                    <th className="p-4 text-right">Change Privileges</th>
+                  </tr>
+                </thead>
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800/80">
+                  {users.map((u) => (
+                    <tr key={u.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/40">
+                      <td className="p-4 font-bold text-slate-900 dark:text-white">
+                        {u.name || u.username}
+                      </td>
+                      <td className="p-4 font-mono text-slate-600 dark:text-slate-300">
+                        @{u.username}
+                      </td>
+                      <td className="p-4 font-mono text-slate-500">
+                        {u.email}
+                      </td>
+                      <td className="p-4">
+                        <span className={`text-[10px] font-bold uppercase tracking-wider px-2.5 py-0.5 rounded-full border ${
+                          u.role === 'admin'
+                            ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300'
+                            : 'bg-slate-100 text-slate-800 dark:bg-slate-800 dark:text-slate-300 border-slate-200'
+                        }`}>
+                          {u.role}
+                        </span>
+                      </td>
+                      <td className="p-4 text-right">
+                        <button
+                          onClick={() => handleToggleRole(u.id, u.role)}
+                          className="px-3 py-1.5 rounded-xl border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 transition"
+                        >
+                          {u.role === 'admin' ? 'Demote to Student' : 'Promote to Admin'}
+                        </button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* TAB 3: SYSTEM BROADCAST */}
+      {activeTab === 'broadcast' && (
+        <div className="bg-white dark:bg-slate-900 rounded-3xl border border-slate-200 dark:border-slate-800 p-6 sm:p-8 space-y-5 shadow-xs">
+          <div className="space-y-1">
+            <h2 className="text-base font-bold text-slate-900 dark:text-white flex items-center gap-2">
+              <Megaphone className="w-5 h-5 text-indigo-600 dark:text-indigo-400" />
+              <span>Global Announcement Banner</span>
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Broadcast high-priority notifications, course release news, or maintenance warnings to all active concurrent sessions.
+            </p>
+          </div>
+
+          <form onSubmit={handleSaveBroadcast} className="space-y-4">
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Announcement Message
+              </label>
+              <textarea
+                rows={3}
+                value={newBroadcastMsg}
+                onChange={(e) => setNewBroadcastMsg(e.target.value)}
+                placeholder="Enter alert message to display to all students and architects..."
+                className="w-full text-xs font-semibold p-4 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-indigo-500 leading-relaxed"
+              />
+            </div>
+
+            <button
+              type="submit"
+              className="px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition shadow-xs flex items-center gap-2"
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Publish Broadcast to All Sessions</span>
+            </button>
+          </form>
+        </div>
+      )}
+
+      {/* TAB 4: VERCEL DATABASE DIAGNOSTICS */}
+      {activeTab === 'database' && (
+        <div className="space-y-6">
+          <div className="p-6 rounded-3xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 space-y-3">
+            <div className="flex items-center gap-2 text-sm font-bold text-indigo-900 dark:text-indigo-300">
+              <Database className="w-4 h-4 text-indigo-600" />
+              <span>Vercel Database Integration (Vercel Postgres / Storage Architecture)</span>
+            </div>
+            <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
+              This application features a <strong>Zero-Config Hybrid Dual-Engine</strong>:
+            </p>
+            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 pl-4 list-disc">
+              <li>
+                <strong>Cloud Production (Vercel Postgres):</strong> When you create a Postgres database in the Vercel dashboard and attach it to this project, Vercel injects the <code>POSTGRES_URL</code> environment variable. The serverless functions automatically connect and migrate the live database.
+              </li>
+              <li>
+                <strong>Serverless &amp; Local Resilience (In-Browser SQLite / Storage Engine):</strong> When running in preview or local mode without live credentials, the app seamlessly runs on a full in-browser reactive database engine so that users can complete lessons, submit code, and log in concurrently without crashing.
+              </li>
+            </ul>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                Engine Status
+              </span>
+              <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Healthy (Active)</span>
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                Registered Users
+              </span>
+              <div className="text-xl font-black text-slate-900 dark:text-white">
+                {users.length} Accounts
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                Concurrent Sessions
+              </span>
+              <div className="text-xl font-black text-sky-600 dark:text-sky-400">
+                {sessions.length} Live
+              </div>
+            </div>
+
+            <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+              <span className="text-[11px] font-bold text-slate-400 uppercase tracking-wider font-mono">
+                ATC Submissions
+              </span>
+              <div className="text-xl font-black text-indigo-600 dark:text-indigo-400">
+                {dbDiag?.tables?.submissions_count || 0} Evaluated
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}

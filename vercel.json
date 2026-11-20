@@ -5,7 +5,15 @@
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/(.*)",
+      "source": "/api/db-status",
+      "destination": "/api/db-status.js"
+    },
+    {
+      "source": "/api/auth/:match*",
+      "destination": "/api/auth.js"
+    },
+    {
+      "source": "/((?!api/).*)",
       "destination": "/index.html"
     }
   ]
