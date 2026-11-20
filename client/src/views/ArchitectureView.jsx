@@ -232,15 +232,15 @@ export function ArchitectureView({ onShowToast }) {
 
               {item.codeSnippet && (
                 <div className="relative mt-1">
-                  <pre className="bg-slate-950 text-emerald-300 text-[11px] font-mono p-2.5 rounded-lg overflow-x-auto thin-scroll">
+                  <pre className="bg-slate-100 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 text-slate-800 dark:text-emerald-300 text-[11px] font-mono p-2.5 rounded-lg overflow-x-auto thin-scroll">
                     <code>{item.codeSnippet}</code>
                   </pre>
                   <button
                     onClick={() => handleCopySnippet(item.id, item.codeSnippet)}
-                    className="absolute top-2 right-2 p-1 rounded bg-slate-800 text-slate-300 hover:text-white text-xs transition"
+                    className="absolute top-2 right-2 p-1 rounded bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white text-xs transition"
                     title="Copy snippet"
                   >
-                    {copiedSnippetId === item.id ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    {copiedSnippetId === item.id ? <Check className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3 h-3" />}
                   </button>
                 </div>
               )}

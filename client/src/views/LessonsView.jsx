@@ -568,7 +568,7 @@ export function LessonsView({
                       <Terminal className="w-3.5 h-3.5 text-sky-500" />
                       <span>Formal Syntax Blueprint:</span>
                     </span>
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-slate-800 font-mono text-xs sm:text-sm text-sky-300 overflow-x-auto shadow-inner">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-xs sm:text-sm text-slate-800 dark:text-slate-200 overflow-x-auto shadow-xs">
                       <pre className="whitespace-pre-wrap">{kw.syntax}</pre>
                     </div>
                   </div>
@@ -625,7 +625,7 @@ export function LessonsView({
                         )}
                       </button>
                     </div>
-                    <div className="p-4 rounded-2xl bg-slate-950 border border-emerald-900/50 font-mono text-xs sm:text-sm text-emerald-300 overflow-x-auto shadow-inner">
+                    <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-xs sm:text-sm text-slate-800 dark:text-slate-200 overflow-x-auto shadow-xs">
                       <pre className="whitespace-pre-wrap">{kw.modernExample}</pre>
                     </div>
                   </div>
@@ -686,7 +686,7 @@ export function LessonsView({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400">
                   Legacy Code Pattern:
                 </span>
-                <div className="p-4 rounded-xl bg-slate-950 border border-rose-900/40 font-mono text-xs text-slate-300 overflow-x-auto">
+                <div className="p-4 rounded-xl bg-rose-50/60 dark:bg-slate-900 border border-rose-200 dark:border-rose-900/40 font-mono text-xs text-rose-950 dark:text-rose-200 overflow-x-auto">
                   <pre className="whitespace-pre">{showdown.elementA.syntax}</pre>
                 </div>
               </div>
@@ -736,7 +736,7 @@ export function LessonsView({
                 <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-600 dark:text-emerald-400">
                   Modern Clean Core Pattern:
                 </span>
-                <div className="p-4 rounded-xl bg-slate-950 border border-emerald-900/40 font-mono text-xs text-emerald-300 overflow-x-auto">
+                <div className="p-4 rounded-xl bg-emerald-50/60 dark:bg-slate-900 border border-emerald-200 dark:border-emerald-900/40 font-mono text-xs text-emerald-950 dark:text-emerald-200 overflow-x-auto">
                   <pre className="whitespace-pre">{showdown.elementB.syntax}</pre>
                 </div>
               </div>
@@ -912,7 +912,7 @@ export function LessonsView({
               value={userCode}
               onChange={(e) => setUserCode(e.target.value)}
               rows={11}
-              className="w-full font-mono text-xs sm:text-sm p-4 sm:p-5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-slate-950 text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-inner"
+              className="w-full font-mono text-xs sm:text-sm p-4 sm:p-5 rounded-2xl border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-900 dark:text-slate-100 focus:outline-none focus:ring-2 focus:ring-sky-500 shadow-inner leading-relaxed"
               placeholder="Write your modern ABAP Clean Core solution here..."
             />
           </div>
@@ -1032,7 +1032,7 @@ export function LessonsView({
                         <strong>Remediation:</strong> {v.remediation}
                       </div>
                       {v.example && (
-                        <code className="block bg-slate-950 text-emerald-300 p-2.5 rounded-lg text-[11px] font-mono mt-1">
+                        <code className="block bg-slate-100 dark:bg-slate-800 text-slate-800 dark:text-emerald-300 border border-slate-200 dark:border-slate-700 p-2.5 rounded-lg text-[11px] font-mono mt-1">
                           {v.example}
                         </code>
                       )}
