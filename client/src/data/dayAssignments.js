@@ -1,10 +1,153 @@
 /**
- * Enterprise 14-Day Masterclass: Beginner Bridges & 140 Progressive Hands-On Assignments
+ * Enterprise 15-Day Masterclass: Beginner Bridges & 150 Progressive Hands-On Assignments
  * For developers new to SAP & classic ABAP (Zero-to-Hero methodology)
  * Every day has 10 assignments, with #10 being the Master Capstone synthesizing all concepts.
  */
 
 export const DAY_ASSIGNMENTS = {
+  "day-0-abap-prerequisites": [
+    {
+      "id": 1,
+      "title": "Exercise 1: Basic Variables, Immutability & The Period Operator",
+      "difficulty": "Warm-up",
+      "isCapstone": false,
+      "estimatedMinutes": 5,
+      "prompt": "Declare an immutable variable `lv_app_name` with value \"SAP Cloud Studio\" using `FINAL(...)` and a mutable variable `lv_version` with value 1 using `DATA(...)`. Increment `lv_version` by 1. Note: remember that every statement in ABAP ends with a period `.`. Output to console.",
+      "starterCode": "\" Exercise 1: Variables & Immutability\nMETHOD if_oo_adt_classrun~main.\n  \" TODO: Declare immutable lv_app_name with FINAL\n  \" TODO: Declare mutable lv_version with DATA starting at 1\n  \" TODO: Increment lv_version by 1\n  \" TODO: Output via out->write( ... )\nENDMETHOD.",
+      "hints": [
+        "FINAL(lv_app_name) = 'SAP Cloud Studio'.",
+        "DATA(lv_version) = 1. lv_version = lv_version + 1.",
+        "out->write( |{ lv_app_name } Version { lv_version }| )."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  FINAL(lv_app_name) = 'SAP Cloud Studio'.\n  DATA(lv_version)   = 1.\n\n  lv_version = lv_version + 1.\n\n  out->write( |{ lv_app_name } Version { lv_version }| ).\nENDMETHOD."
+    },
+    {
+      "id": 2,
+      "title": "Exercise 2: Field Access with Hyphen (-) & String Templates (|...|)",
+      "difficulty": "Warm-up",
+      "isCapstone": false,
+      "estimatedMinutes": 8,
+      "prompt": "In ABAP, structure fields are accessed with a hyphen `-` (e.g. `ls_person-first_name`). Given a structure `ls_user` with fields `first_name`, `last_name`, and `role`, use modern string templates with pipes `|...|` to format a greeting.",
+      "starterCode": "\" Exercise 2: Hyphen field access and string templates\nTYPES: BEGIN OF ty_user,\n         first_name TYPE string,\n         last_name  TYPE string,\n         role       TYPE string,\n       END OF ty_user.\n\nMETHOD if_oo_adt_classrun~main.\n  FINAL(ls_user) = VALUE ty_user( first_name = 'Alex' last_name = 'Riva' role = 'Lead Architect' ).\n\n  \" TODO: Access ls_user-first_name and ls_user-role using hyphen\n  \" Format string template: |User: { ... } | && |Role: { ... }|\nENDMETHOD.",
+      "hints": [
+        "Notice: Use ls_user-first_name (with a hyphen), NOT ls_user.first_name.",
+        "Use out->write( |User: { ls_user-first_name } { ls_user-last_name } | && |Role: { ls_user-role }| )."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  TYPES: BEGIN OF ty_user,\n           first_name TYPE string,\n           last_name  TYPE string,\n           role       TYPE string,\n         END OF ty_user.\n\n  FINAL(ls_user) = VALUE ty_user(\n    first_name = 'Alex'\n    last_name  = 'Riva'\n    role       = 'Lead Architect'\n  ).\n\n  out->write( |User: { ls_user-first_name } { ls_user-last_name } | &&\n              |Role: { ls_user-role }| ).\nENDMETHOD."
+    },
+    {
+      "id": 3,
+      "title": "Exercise 3: Control Flow with IF / ELSEIF / ELSE and CASE",
+      "difficulty": "Warm-up",
+      "isCapstone": false,
+      "estimatedMinutes": 8,
+      "prompt": "Write an `IF / ELSEIF / ELSE` check evaluating `lv_score`: >= 90 returns \"Grade A\", >= 75 returns \"Grade B\", otherwise \"Grade C\". Also write a `CASE` statement evaluating `lv_status_code` ('S' -> \"Success\", 'E' -> \"Error\", 'W' -> \"Warning\").",
+      "starterCode": "\" Exercise 3: Control Flow\nMETHOD if_oo_adt_classrun~main.\n  FINAL(lv_score) = 85.\n  FINAL(lv_status_code) = 'S'.\n\n  \" TODO: IF / ELSEIF / ELSE for lv_score\n  \" TODO: CASE lv_status_code WHEN ... WHEN OTHERS ... ENDCASE\nENDMETHOD.",
+      "hints": [
+        "IF lv_score >= 90. ... ELSEIF lv_score >= 75. ... ELSE. ... ENDIF.",
+        "CASE lv_status_code. WHEN 'S'. ... WHEN 'E'. ... WHEN OTHERS. ... ENDCASE."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  FINAL(lv_score)       = 85.\n  FINAL(lv_status_code) = 'S'.\n\n  DATA lv_grade TYPE string.\n  IF lv_score >= 90.\n    lv_grade = 'Grade A'.\n  ELSEIF lv_score >= 75.\n    lv_grade = 'Grade B'.\n  ELSE.\n    lv_grade = 'Grade C'.\n  ENDIF.\n\n  DATA lv_status_text TYPE string.\n  CASE lv_status_code.\n    WHEN 'S'.\n      lv_status_text = 'Success'.\n    WHEN 'E'.\n      lv_status_text = 'Error'.\n    WHEN OTHERS.\n      lv_status_text = 'Warning / Other'.\n  ENDCASE.\n\n  out->write( |Score: { lv_score } -> { lv_grade }| ).\n  out->write( |Status: { lv_status_code } -> { lv_status_text }| ).\nENDMETHOD."
+    },
+    {
+      "id": 4,
+      "title": "Exercise 4: Defining Structures (DTOs) with TYPES: BEGIN OF",
+      "difficulty": "Core",
+      "isCapstone": false,
+      "estimatedMinutes": 10,
+      "prompt": "Define a structure type `ty_product` with fields `product_id TYPE string`, `product_name TYPE string`, and `unit_price TYPE decfloat16`. Instantiate a single structure `ls_product` and assign values.",
+      "starterCode": "\" Exercise 4: Defining Structures\nMETHOD if_oo_adt_classrun~main.\n  \" TODO: Define TYPES: BEGIN OF ty_product ... END OF ty_product\n  \" TODO: Instantiate ls_product with VALUE ty_product( ... )\n  \" TODO: Output product details\nENDMETHOD.",
+      "hints": [
+        "TYPES: BEGIN OF ty_product, product_id TYPE string, product_name TYPE string, unit_price TYPE decfloat16, END OF ty_product.",
+        "FINAL(ls_product) = VALUE ty_product( product_id = 'P100' product_name = 'Laptop' unit_price = 1200 )."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  TYPES: BEGIN OF ty_product,\n           product_id   TYPE string,\n           product_name TYPE string,\n           unit_price   TYPE decfloat16,\n         END OF ty_product.\n\n  FINAL(ls_product) = VALUE ty_product(\n    product_id   = 'P100'\n    product_name = 'Laptop'\n    unit_price   = 1200\n  ).\n\n  out->write( |Product: { ls_product-product_name } (#{ ls_product-product_id }), Price: { ls_product-unit_price }| ).\nENDMETHOD."
+    },
+    {
+      "id": 5,
+      "title": "Exercise 5: Internal Tables (Arrays) & Manual APPEND",
+      "difficulty": "Core",
+      "isCapstone": false,
+      "estimatedMinutes": 10,
+      "prompt": "Define an internal table type `tt_products TYPE STANDARD TABLE OF ty_product WITH EMPTY KEY`. Create a mutable table `DATA(lt_products) TYPE tt_products`. Populate 2 rows using manual `APPEND ls_product TO lt_products`.",
+      "starterCode": "\" Exercise 5: Internal Tables and APPEND\nMETHOD if_oo_adt_classrun~main.\n  \" TODO: Define tt_products\n  \" TODO: Declare DATA(lt_products) TYPE tt_products\n  \" TODO: APPEND two products\n  \" TODO: Output count using lines( lt_products )\nENDMETHOD.",
+      "hints": [
+        "In Java: list.add(item); In ABAP: APPEND ls_item TO lt_items.",
+        "Use lines( lt_products ) to count table rows."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  TYPES: BEGIN OF ty_product,\n           product_id   TYPE string,\n           product_name TYPE string,\n           unit_price   TYPE decfloat16,\n         END OF ty_product,\n         tt_products TYPE STANDARD TABLE OF ty_product WITH EMPTY KEY.\n\n  DATA lt_products TYPE tt_products.\n\n  DATA ls_prod1 TYPE ty_product.\n  ls_prod1-product_id   = 'P01'.\n  ls_prod1-product_name = 'Monitor'.\n  ls_prod1-unit_price   = 350.\n  APPEND ls_prod1 TO lt_products.\n\n  DATA ls_prod2 TYPE ty_product.\n  ls_prod2-product_id   = 'P02'.\n  ls_prod2-product_name = 'Keyboard'.\n  ls_prod2-unit_price   = 85.\n  APPEND ls_prod2 TO lt_products.\n\n  out->write( |Total items in table: { lines( lt_products ) }| ).\n  out->write( lt_products ).\nENDMETHOD."
+    },
+    {
+      "id": 6,
+      "title": "Exercise 6: Iterating Collections with LOOP AT ... INTO ...",
+      "difficulty": "Core",
+      "isCapstone": false,
+      "estimatedMinutes": 10,
+      "prompt": "Loop through an internal table `lt_products` using `LOOP AT lt_products INTO FINAL(ls_prod). ... ENDLOOP.`. Print each product line and compute total price with an accumulator.",
+      "starterCode": "\" Exercise 6: LOOP AT itab INTO wa\nMETHOD if_oo_adt_classrun~main.\n  -- Given lt_products\n  -- TODO: Loop through table and accumulate total price\nENDMETHOD.",
+      "hints": [
+        "In Java: for (final Product p : list). In ABAP: LOOP AT lt_products INTO FINAL(ls_prod).",
+        "Accumulate with lv_total = lv_total + ls_prod-unit_price."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  TYPES: BEGIN OF ty_product,\n           product_id   TYPE string,\n           product_name TYPE string,\n           unit_price   TYPE decfloat16,\n         END OF ty_product,\n         tt_products TYPE STANDARD TABLE OF ty_product WITH EMPTY KEY.\n\n  FINAL(lt_products) = VALUE tt_products(\n    ( product_id = 'P01' product_name = 'Monitor'  unit_price = 350 )\n    ( product_id = 'P02' product_name = 'Keyboard' unit_price = 85 )\n    ( product_id = 'P03' product_name = 'Mouse'    unit_price = 45 )\n  ).\n\n  DATA lv_total TYPE decfloat16 VALUE 0.\n\n  LOOP AT lt_products INTO FINAL(ls_prod).\n    lv_total = lv_total + ls_prod-unit_price.\n    out->write( |Item { ls_prod-product_id }: { ls_prod-product_name } = { ls_prod-unit_price }| ).\n  ENDLOOP.\n\n  out->write( |Total Cart Value: { lv_total }| ).\nENDMETHOD."
+    },
+    {
+      "id": 7,
+      "title": "Exercise 7: Finding Elements with READ TABLE ... WITH KEY",
+      "difficulty": "Core",
+      "isCapstone": false,
+      "estimatedMinutes": 10,
+      "prompt": "Find a specific row in `lt_products` where `product_id = 'P02'` using `READ TABLE lt_products WITH KEY product_id = 'P02' INTO FINAL(ls_found).`. Check `IF sy-subrc = 0`.",
+      "starterCode": "\" Exercise 7: READ TABLE search\nMETHOD if_oo_adt_classrun~main.\n  -- TODO: Search for product P02 using READ TABLE\n  -- Check IF sy-subrc = 0 (found)\nENDMETHOD.",
+      "hints": [
+        "READ TABLE lt_products WITH KEY product_id = 'P02' INTO FINAL(ls_found).",
+        "sy-subrc = 0 means found (success), sy-subrc = 4 means not found."
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  TYPES: BEGIN OF ty_product,\n           product_id   TYPE string,\n           product_name TYPE string,\n           unit_price   TYPE decfloat16,\n         END OF ty_product,\n         tt_products TYPE STANDARD TABLE OF ty_product WITH EMPTY KEY.\n\n  FINAL(lt_products) = VALUE tt_products(\n    ( product_id = 'P01' product_name = 'Monitor'  unit_price = 350 )\n    ( product_id = 'P02' product_name = 'Keyboard' unit_price = 85 )\n  ).\n\n  READ TABLE lt_products WITH KEY product_id = 'P02' INTO FINAL(ls_found).\n  IF sy-subrc = 0.\n    out->write( |Found product: { ls_found-product_name } with price { ls_found-unit_price }| ).\n  ELSE.\n    out->write( 'Product not found.' ).\n  ENDIF.\nENDMETHOD."
+    },
+    {
+      "id": 8,
+      "title": "Exercise 8: DTO Mapping with CORRESPONDING #( ... )",
+      "difficulty": "Core",
+      "isCapstone": false,
+      "estimatedMinutes": 12,
+      "prompt": "You have a rich database row type `ty_db_user` with 5 fields and a lean API response type `ty_api_user` with only 3 fields (`user_id`, `email`, `role`). Use `CORRESPONDING ty_api_user( ls_db_user )` to automatically map matching fields without manual assignment.",
+      "starterCode": "\" Exercise 8: CORRESPONDING DTO mapping\nMETHOD if_oo_adt_classrun~main.\n  \" TODO: Define ty_db_user and ty_api_user\n  \" TODO: Map using CORRESPONDING ty_api_user( ls_db )\nENDMETHOD.",
+      "hints": [
+        "In Spring Boot: modelMapper.map(source, Target.class). In ABAP: FINAL(ls_api) = CORRESPONDING ty_api_user( ls_db ).",
+        "Only fields with identical names are copied automatically!"
+      ],
+      "solution": "METHOD if_oo_adt_classrun~main.\n  TYPES: BEGIN OF ty_db_user,\n           user_id     TYPE string,\n           email       TYPE string,\n           role        TYPE string,\n           password_hash TYPE string,\n           last_login_ip TYPE string,\n         END OF ty_db_user,\n\n         BEGIN OF ty_api_user,\n           user_id TYPE string,\n           email   TYPE string,\n           role    TYPE string,\n         END OF ty_api_user.\n\n  FINAL(ls_db) = VALUE ty_db_user(\n    user_id       = 'USR_99'\n    email         = 'developer@corp.com'\n    role          = 'ADMIN'\n    password_hash = '$2a$12$e8...'\n    last_login_ip = '192.168.1.1'\n  ).\n\n  \" Automatic field mapping:\n  FINAL(ls_api) = CORRESPONDING ty_api_user( ls_db ).\n\n  out->write( |Clean API DTO (Password excluded): { ls_api-email } ({ ls_api-role })| ).\nENDMETHOD."
+    },
+    {
+      "id": 9,
+      "title": "Exercise 9: Writing an Object-Oriented Class & Interface (~)",
+      "difficulty": "Advanced",
+      "isCapstone": false,
+      "estimatedMinutes": 15,
+      "prompt": "Write an ABAP class `zcl_math_service` implementing an interface `zif_calculator` with method `multiply( iv_a, iv_b ) RETURNING VALUE(rv_product)`. Explain why the method implementation requires the tilde `~` operator.",
+      "starterCode": "\" Exercise 9: OOP and the ~ operator\nINTERFACE zif_calculator.\n  METHODS multiply\n    IMPORTING iv_a TYPE i iv_b TYPE i\n    RETURNING VALUE(rv_product) TYPE i.\nENDINTERFACE.\n\nCLASS zcl_math_service DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION.\n    INTERFACES zif_calculator.\nENDCLASS.\n\nCLASS zcl_math_service IMPLEMENTATION.\n  \" TODO: Implement zif_calculator~multiply\nENDCLASS.",
+      "hints": [
+        "In Java, you implement an interface method just by name: public int multiply(...). In ABAP, you must write METHOD zif_calculator~multiply.",
+        "The tilde ~ connects the interface name to the method name to avoid collisions."
+      ],
+      "solution": "INTERFACE zif_calculator.\n  METHODS multiply\n    IMPORTING iv_a TYPE i iv_b TYPE i\n    RETURNING VALUE(rv_product) TYPE i.\nENDINTERFACE.\n\nCLASS zcl_math_service DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION.\n    INTERFACES zif_calculator.\nENDCLASS.\n\nCLASS zcl_math_service IMPLEMENTATION.\n  METHOD zif_calculator~multiply.\n    rv_product = iv_a * iv_b.\n  ENDMETHOD.\nENDCLASS."
+    },
+    {
+      "id": 10,
+      "title": "Exercise 10 (Master Capstone): The Absolute Zero-to-Hero Foundation Engine",
+      "difficulty": "Master Capstone",
+      "isCapstone": true,
+      "estimatedMinutes": 30,
+      "prompt": "THE BIG ONE (PREREQUISITE CAPSTONE):\nSynthesize all foundational core ABAP mechanics from Level 0:\n1. Define custom structure ty_student with fields: student_id, name, exam_score, attendance_pct.\n2. Define internal table type tt_students.\n3. Populate an internal table lt_students with 4 records using VALUE #( ... ).\n4. Define a lean reporting structure ty_report_card with fields: student_id, name, status_letter.\n5. Loop through lt_students:\n   - Calculate grade: IF exam_score >= 80 AND attendance_pct >= 85 -> \"PASS WITH HONORS\", ELSEIF exam_score >= 60 -> \"STANDARD PASS\", ELSE -> \"NEEDS RETAKE\".\n   - Map student details using CORRESPONDING and append to a report table lt_reports.\n6. Use READ TABLE to find student with ID 'ST01' and verify their status.\n7. Output complete formatted summary using out->write( ) and string templates.\n8. 100% Clean Core compliant, zero classic Dynpro WRITE.",
+      "starterCode": "\" DAY 0 MASTER CAPSTONE: Foundation Engine\nCLASS zcl_day0_foundation DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION.\n    INTERFACES if_oo_adt_classrun.\n\n    \" TODO: Define types ty_student, tt_students, ty_report_card, tt_report_card\nENDCLASS.\n\nCLASS zcl_day0_foundation IMPLEMENTATION.\n  METHOD if_oo_adt_classrun~main.\n    \" TODO: Build students table, loop, grade, map with CORRESPONDING, search with READ TABLE, and print report\n  ENDMETHOD.\nENDCLASS.",
+      "hints": [
+        "Use CORRESPONDING ty_report_card( s ) to map matching student_id and name fields.",
+        "Use IF / ELSEIF / ELSE to compute status_letter."
+      ],
+      "solution": "CLASS zcl_day0_foundation DEFINITION PUBLIC FINAL CREATE PUBLIC.\n  PUBLIC SECTION.\n    INTERFACES if_oo_adt_classrun.\n\n    TYPES: BEGIN OF ty_student,\n             student_id     TYPE string,\n             name           TYPE string,\n             exam_score     TYPE i,\n             attendance_pct TYPE i,\n           END OF ty_student,\n           tt_students TYPE STANDARD TABLE OF ty_student WITH EMPTY KEY,\n\n           BEGIN OF ty_report_card,\n             student_id    TYPE string,\n             name          TYPE string,\n             status_letter TYPE string,\n           END OF ty_report_card,\n           tt_report_card TYPE STANDARD TABLE OF ty_report_card WITH EMPTY KEY.\nENDCLASS.\n\nCLASS zcl_day0_foundation IMPLEMENTATION.\n  METHOD if_oo_adt_classrun~main.\n    \" 1. Initialize dataset\n    FINAL(lt_students) = VALUE tt_students(\n      ( student_id = 'ST01' name = 'Liam Vance'    exam_score = 92 attendance_pct = 95 )\n      ( student_id = 'ST02' name = 'Zoe Campbell'  exam_score = 74 attendance_pct = 88 )\n      ( student_id = 'ST03' name = 'Noah Patel'    exam_score = 55 attendance_pct = 60 )\n      ( student_id = 'ST04' name = 'Emma Fischer'  exam_score = 85 attendance_pct = 90 )\n    ).\n\n    DATA lt_reports TYPE tt_report_card.\n\n    \" 2. Loop and process\n    LOOP AT lt_students INTO FINAL(ls_s).\n      DATA(ls_report) = CORRESPONDING ty_report_card( ls_s ).\n\n      IF ls_s-exam_score >= 80 AND ls_s-attendance_pct >= 85.\n        ls_report-status_letter = 'PASS WITH HONORS'.\n      ELSEIF ls_s-exam_score >= 60.\n        ls_report-status_letter = 'STANDARD PASS'.\n      ELSE.\n        ls_report-status_letter = 'NEEDS RETAKE'.\n      ENDIF.\n\n      APPEND ls_report TO lt_reports.\n    ENDLOOP.\n\n    \" 3. Search single record\n    READ TABLE lt_reports WITH KEY student_id = 'ST01' INTO FINAL(ls_top_student).\n    IF sy-subrc = 0.\n      out->write( |Spotlight Student: { ls_top_student-name } achieved { ls_top_student-status_letter }| ).\n    ENDIF.\n\n    out->write( |=== COMPLETE STUDENT GRADE ROSTER ===| ).\n    out->write( lt_reports ).\n  ENDMETHOD.\nENDCLASS."
+    }
+  ],
   "day-1-modern-abap": [
     {
       "id": 1,
@@ -1787,7 +1930,7 @@ export const DAY_ASSIGNMENTS = {
       "hints": [
         "Focus on Total Cost of Ownership (TCO), automatic bi-annual upgrades, and eliminating upgrade multi-month regression testing."
       ],
-      "solution": "/* Defense of Clean Core Architecture:\n\"Modifying standard SAP code in 1 hour creates technical debt that costs hundreds of thousands of dollars during every subsequent upgrade. When you modify standard code, SAP can no longer update your cloud system automatically\u2014every upgrade requires months of painful code regression testing and manual remediation. By enforcing Clean Core and building decoupled extensions using stable C1 Released APIs and RAP, the core ERP system stays pristine. SAP can apply automated cloud upgrades seamlessly with zero downtime and zero broken custom code.\" */"
+      "solution": "/* Defense of Clean Core Architecture:\n\"Modifying standard SAP code in 1 hour creates technical debt that costs hundreds of thousands of dollars during every subsequent upgrade. When you modify standard code, SAP can no longer update your cloud system automatically—every upgrade requires months of painful code regression testing and manual remediation. By enforcing Clean Core and building decoupled extensions using stable C1 Released APIs and RAP, the core ERP system stays pristine. SAP can apply automated cloud upgrades seamlessly with zero downtime and zero broken custom code.\" */"
     },
     {
       "id": 4,
@@ -1884,6 +2027,63 @@ export const DAY_ASSIGNMENTS = {
 };
 
 export const BEGINNER_BRIDGES = {
+  "day-0-abap-prerequisites": {
+    "title": "Zero-to-Hero Fast Track: Modern ABAP Fundamentals for Java & JS Engineers",
+    "summary": "Welcome to your prerequisite booster! In modern full-stack development, you already understand variables, loops, arrays, objects, and classes in Java (Spring Boot) or JavaScript (Express.js). In ABAP, the core logic is 100% identical—only the punctuation is different! Once you understand the period `.`, the hyphen `-`, structures, internal tables, and the tilde `~`, you will be able to read and write any modern ABAP and RAP code with complete confidence.",
+    "whyClassicWasHard": "Classic 1990s ABAP used monolithic procedural reports, untyped tables, and Dynpro screens. Modern ABAP Cloud is strictly object-oriented, type-safe, and runs directly on the SAP HANA in-memory database.",
+    "jargonBuster": [
+      {
+        "term": ".",
+        "translation": "Period ending every ABAP statement",
+        "modernEquivalent": "Semicolon ; in Java / JavaScript / C#"
+      },
+      {
+        "term": "-",
+        "translation": "Field accessor in structures (ls_user-name)",
+        "modernEquivalent": "Dot accessor (user.name) in Java / JS"
+      },
+      {
+        "term": "TYPES: BEGIN OF ...",
+        "translation": "Structure / Record type definition",
+        "modernEquivalent": "class UserDTO { ... } or interface User { ... }"
+      },
+      {
+        "term": "TYPE TABLE OF ...",
+        "translation": "Internal table (in-memory array/list)",
+        "modernEquivalent": "List<UserDTO> in Java or User[] in TypeScript"
+      },
+      {
+        "term": "APPEND wa TO itab",
+        "translation": "Push a record into a table",
+        "modernEquivalent": "list.add(item) in Java or array.push(item) in JS"
+      },
+      {
+        "term": "LOOP AT itab INTO wa",
+        "translation": "Iterate through table rows",
+        "modernEquivalent": "for (final User u : list) or for (const u of list)"
+      },
+      {
+        "term": "CORRESPONDING #( ... )",
+        "translation": "Automatic DTO mapper for matching fields",
+        "modernEquivalent": "modelMapper.map() in Spring Boot or { ...source } in JS"
+      },
+      {
+        "term": "~",
+        "translation": "Interface method resolution operator",
+        "modernEquivalent": "@Override in Java / interface implementation"
+      },
+      {
+        "term": "out->write( ... )",
+        "translation": "Console output in Eclipse ADT",
+        "modernEquivalent": "System.out.println() in Java or console.log() in JS"
+      }
+    ],
+    "proTips": [
+      "Rule 1: Always put a period '.' at the end of every ABAP statement.",
+      "Rule 2: To access a field inside a structure, use a hyphen: ls_employee-salary.",
+      "Rule 3: Use FINAL(var) by default for immutability; reserve DATA(var) for counters and accumulators."
+    ]
+  },
   "day-1-modern-abap": {
     "title": "Zero-to-Hero Bridge: If You Come From JavaScript, Python, or SQL",
     "summary": "In traditional web development, you use modern ES6+ features like `const` (immutable variables), `map()`, `filter()`, `reduce()`, and ternary operators `condition ? val1 : val2`. Day 1 gives you the exact same modern functional powers in modern ABAP: `FINAL` is your `const`, `VALUE #( FOR ... )` is your `.map()`, `WHERE` is your `.filter()`, and `REDUCE #( )` is your `.reduce()`.",

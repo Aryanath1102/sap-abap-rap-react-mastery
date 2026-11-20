@@ -8,6 +8,449 @@ import { DAY_ASSIGNMENTS, BEGINNER_BRIDGES } from './dayAssignments';
 
 const BASE_LESSONS = [
   // =========================================================================
+  // DAY 0: PREREQUISITE FAST TRACK — MODERN ABAP CORE MECHANICS (FROM ZERO TO RAP)
+  // =========================================================================
+  {
+    id: 'day-0-abap-prerequisites',
+    day: 0,
+    title: 'Day 0: Prerequisite Fast Track — Modern ABAP Core Mechanics (From Zero to RAP)',
+    subtitle: 'Master Variables, Structures, Internal Tables (Arrays), OOP Classes, Interfaces (~), and Open SQL before diving into RAP',
+    readTime: '22 min read',
+    vlogHook: "Hey engineers! If you come from Spring Boot (Java) or Express.js (Node.js) and open a modern ABAP RAP file for the first time, you might feel like you are looking at hieroglyphics. Where are the semicolons? Why is there a tilde (~) and a hyphen (-)? What on earth is an internal table or READ ENTITIES? Take a deep breath: ABAP Cloud is simply an object-oriented business programming language running on an in-memory database. In this prerequisite fast track, we start from absolute zero (ABC or 0). Once you master variables, structures, internal tables, OOP interfaces, and Open SQL in these 5 modules, modern RAP code will suddenly make crystal-clear sense!",
+    layman: "Think of ABAP as Java with business punctuation. Semicolon (;) becomes period (.). Object dot-notation (user.name) becomes a hyphen (ls_user-name). An ArrayList or JavaScript Array is called an Internal Table. That's it! Everything else—variables, functions, classes, interfaces, loops, and SQL—works on the exact same computer science principles you already use every day.",
+    technical: "ABAP Cloud (Language Version 5) is the modern, type-safe, object-oriented runtime of SAP S/4HANA Cloud and SAP BTP. It completely forbids legacy procedural constructs like FORM routines, HEADER LINE tables, and Dynpro screens. Execution is unified through modern OOP classes implementing IF_OO_ADT_CLASSRUN for console output, ABAP SQL for database queries, and Core Data Services (CDS) for enterprise domain models.",
+
+    deepDiveKeywords: [
+      {
+        name: '0.1 Modern ABAP Core Syntax: Variables, Strings, Punctuation (. and -)',
+        sapDocRef: 'SAP ABAP Cloud Documentation: Declarations, Data Types & Formatting',
+        syntax: `FINAL(lv_company) = 'SAP Labs'.  " Immutable constant (like Java final or JS const)
+DATA(lv_counter)  = 0.           " Mutable variable (like Java int or JS let)
+lv_counter        = lv_counter + 1.
+
+" String templates using pipes |...| with embedded expressions { ... }
+FINAL(lv_message) = |Welcome to { lv_company }! Active session #{ lv_counter }|.`,
+        laymanAnalogy: 'In Java, statements end with a semicolon `;` and you access object properties with a dot (`user.name`). In ABAP, every statement ends with a period `.` and you access fields inside a record with a hyphen (`ls_user-name`). String templates in ABAP use vertical pipes `|Hello { name }|`, which is identical to JavaScript template literals `\`Hello \${name}\``. Easy!',
+        technicalDefinition: `Modern ABAP is strongly and statically typed. With inline declarations, \`FINAL(var)\` defines an immutable symbol in the local stack, preventing accidental mutation, while \`DATA(var)\` defines a mutable variable. The period \`.\` is the fundamental statement terminator of the ABAP compiler. The hyphen \`-\` is the component selector for flat structures (records). Pipe delimiters \`|...|\` define string templates, with curly braces \`{ ... }\` evaluating expressions at runtime without manual concatenation.`,
+        underTheHood: `The ABAP Virtual Machine evaluates inline expressions using type inference from the right-hand operand. When using string templates \`|...|\`, the kernel optimizes buffer allocation using dynamic character string descriptors, eliminating multiple intermediate heap reallocations.`,
+        commonPitfall: `Beginner Pitfalls: 1. Forgetting the trailing period \`.\` on every statement. 2. Typing \`ls_user.name\` instead of \`ls_user-name\` (the dot in ABAP terminates a statement; use hyphen \`-\` for fields!). 3. Using \`DATA\` when the value never changes (violates Clean Core ATC checks).`,
+        modernExample: `METHOD if_oo_adt_classrun~main.
+  " 1. Immutable declaration
+  FINAL(lv_service_name) = 'PaymentGatewayService'.
+  
+  " 2. Mutable counter
+  DATA(lv_retry_count)   = 0.
+  lv_retry_count         = lv_retry_count + 1.
+
+  " 3. String template with pipe operator |...|
+  FINAL(lv_log_entry) = |[SERVICE: { lv_service_name }] Attempt { lv_retry_count } of 3|.
+  
+  out->write( lv_log_entry ).
+ENDMETHOD.`,
+        springBootBridge: {
+          explanation: 'ABAP FINAL is Java final; ABAP DATA is Java var. Statement terminator is period (.) instead of semicolon (;). String template |...| is JS template literal `...` or Java String.format.',
+          springBootCode: `// Java / Spring Boot equivalent:
+final String serviceName = "PaymentGatewayService";
+int retryCount = 0;
+retryCount = retryCount + 1;
+final String logEntry = String.format("[SERVICE: %s] Attempt %d of 3", serviceName, retryCount);
+System.out.println(logEntry);`,
+          expressCode: `// Node.js / Express.js equivalent:
+const serviceName = 'PaymentGatewayService';
+let retryCount = 0;
+retryCount += 1;
+const logEntry = \`[SERVICE: \${serviceName}] Attempt \${retryCount} of 3\`;
+console.log(logEntry);`
+        }
+      },
+      {
+        name: '0.2 Structures & Internal Tables: In-Memory Records and Collections',
+        sapDocRef: 'SAP ABAP Language Reference: Complex Data Types & Internal Tables',
+        syntax: `" 1. Define a Structure (DTO)
+TYPES: BEGIN OF ty_user,
+         id    TYPE string,
+         email TYPE string,
+         role  TYPE string,
+       END OF ty_user,
+       " 2. Define an Internal Table (List/Array)
+       tt_users TYPE STANDARD TABLE OF ty_user WITH EMPTY KEY.
+
+" 3. Instantiate table with rows
+FINAL(lt_users) = VALUE tt_users(
+  ( id = 'U01' email = 'alex@corp.com' role = 'ADMIN' )
+  ( id = 'U02' email = 'zoe@corp.com'  role = 'DEVELOPER' )
+).`,
+        laymanAnalogy: 'A Structure is like a Java DTO or TypeScript interface (one single record with named fields). An Internal Table is simply a Java `List<UserDTO>` or a JavaScript array of objects `User[]`. In ABAP, the prefix `ls_` means "local structure" (single record), and `lt_` means "local table" (array/collection).',
+        technicalDefinition: `An Internal Table is an in-memory multidimensional dynamic array managed by the ABAP kernel. Standard tables provide index-based sequential access (O(N) search or O(log N) binary search). Hashed and sorted tables provide O(1) or O(log N) key-based lookups. The constructor expression \`VALUE tt_type( ( ... ) ( ... ) )\` constructs and populates an internal table inline without manual work areas.`,
+        underTheHood: `Internal tables store row headers in contiguous 64-bit page blocks in the ABAP session roll area. When rows are appended, the ABAP memory manager allocates memory chunks geometrically to minimize fragmentation and system call overhead.`,
+        commonPitfall: `Never declare internal tables with legacy header lines (\`DATA itab TYPE TABLE OF ... WITH HEADER LINE\`). In modern ABAP Cloud, header lines are strictly forbidden; always separate the table (\`lt_users\`) from the work area (\`ls_user\`).`,
+        modernExample: `METHOD if_oo_adt_classrun~main.
+  TYPES: BEGIN OF ty_order,
+           order_id TYPE string,
+           amount   TYPE decfloat16,
+         END OF ty_order,
+         tt_orders TYPE STANDARD TABLE OF ty_order WITH EMPTY KEY.
+
+  " Populate collection
+  FINAL(lt_orders) = VALUE tt_orders(
+    ( order_id = 'ORD_01' amount = '150.00' )
+    ( order_id = 'ORD_02' amount = '320.50' )
+  ).
+
+  " Loop through collection (equivalent to for...of in JS or enhanced for in Java)
+  DATA lv_total TYPE decfloat16 VALUE 0.
+  LOOP AT lt_orders INTO FINAL(ls_order).
+    lv_total = lv_total + ls_order-amount.
+    out->write( |Order { ls_order-order_id }: Amount { ls_order-amount }| ).
+  ENDLOOP.
+
+  out->write( |Total Revenue: { lv_total }| ).
+ENDMETHOD.`,
+        springBootBridge: {
+          explanation: 'Structure = DTO / POJO. Internal Table = List<DTO>. LOOP AT ... INTO wa = for (final DTO item : list). APPEND = list.add(item).',
+          springBootCode: `// Java / Spring Boot equivalent:
+record OrderDTO(String orderId, BigDecimal amount) {}
+List<OrderDTO> orders = List.of(
+    new OrderDTO("ORD_01", new BigDecimal("150.00")),
+    new OrderDTO("ORD_02", new BigDecimal("320.50"))
+);
+BigDecimal total = BigDecimal.ZERO;
+for (final OrderDTO order : orders) {
+    total = total.add(order.amount());
+    System.out.printf("Order %s: Amount %s%n", order.orderId(), order.amount());
+}
+System.out.println("Total Revenue: " + total);`,
+          expressCode: `// Node.js / Express.js equivalent:
+const orders = [
+  { orderId: 'ORD_01', amount: 150.00 },
+  { orderId: 'ORD_02', amount: 320.50 }
+];
+let total = 0;
+for (const order of orders) {
+  total += order.amount;
+  console.log(\`Order \${order.orderId}: Amount \${order.amount}\`);
+}
+console.log(\`Total Revenue: \${total}\`);`
+        }
+      },
+      {
+        name: '0.3 Object-Oriented ABAP: Classes, Methods & The Interface Tilde (~)',
+        sapDocRef: 'SAP ABAP OO Architecture Guide: Classes, Interfaces, and Scope Resolution',
+        syntax: `" Interface definition
+INTERFACE zif_tax_calculator.
+  METHODS calculate
+    IMPORTING iv_amount TYPE decfloat16
+    RETURNING VALUE(rv_tax) TYPE decfloat16.
+ENDINTERFACE.
+
+" Class implementing interface
+CLASS zcl_eu_tax DEFINITION PUBLIC FINAL CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES zif_tax_calculator.
+ENDCLASS.
+
+CLASS zcl_eu_tax IMPLEMENTATION.
+  " Notice the tilde (~) operator: InterfaceName~MethodName
+  METHOD zif_tax_calculator~calculate.
+    rv_tax = iv_amount * '0.20'.
+  ENDMETHOD.
+ENDCLASS.`,
+        laymanAnalogy: 'In Java, an interface method is implemented simply as `public double calculate(double amount)`. But what if a class implements two interfaces that have a method with the same name? In ABAP, the language resolves this explicitly using the tilde `~` operator: `InterfaceName~MethodName`. That is why you always see `if_oo_adt_classrun~main` in console classes!',
+        technicalDefinition: `ABAP Objects enforces a clean two-part structure: \`CLASS ... DEFINITION\` (where members, visibility sections, and interfaces are declared) and \`CLASS ... IMPLEMENTATION\` (where method logic is authored). When implementing an interface method, the tilde (\`~\`) is the interface resolution operator. Method parameters are explicitly categorized as \`IMPORTING\` (input arguments), \`EXPORTING\` (output values), \`CHANGING\` (in-out references), or \`RETURNING VALUE(r)\` (functional return value).`,
+        underTheHood: `The ABAP kernel constructs a virtual method table (vtable) per class. When a method is called via an interface reference, the compiler uses the interface component prefix \`intf~method\` to dispatch the call directly via the interface offset table in constant O(1) time.`,
+        commonPitfall: `Writing \`METHOD calculate.\` instead of \`METHOD zif_tax_calculator~calculate.\` will result in a syntax error: "Method CALCULATE is not declared in class ZCL_EU_TAX." Always use the tilde when implementing interface methods.`,
+        modernExample: `CLASS zcl_pricing_engine DEFINITION PUBLIC FINAL CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES if_oo_adt_classrun.
+
+    METHODS calculate_discount
+      IMPORTING iv_subtotal TYPE decfloat16
+      RETURNING VALUE(rv_discount) TYPE decfloat16.
+ENDCLASS.
+
+CLASS zcl_pricing_engine IMPLEMENTATION.
+  METHOD calculate_discount.
+    IF iv_subtotal > 100.
+      rv_discount = iv_subtotal * '0.10'. " 10% discount
+    ELSE.
+      rv_discount = 0.
+    ENDIF.
+  ENDMETHOD.
+
+  " Interface method implementation:
+  METHOD if_oo_adt_classrun~main.
+    FINAL(lv_subtotal) = 250.
+    FINAL(lv_disc)     = calculate_discount( lv_subtotal ).
+    out->write( |Subtotal: { lv_subtotal }, Discount: { lv_disc }| ).
+  ENDMETHOD.
+ENDCLASS.`,
+        springBootBridge: {
+          explanation: 'CLASS DEFINITION is the Java Interface / Header. CLASS IMPLEMENTATION is the Class Body. METHOD intf~method is @Override public void method(). IMPORTING = method arguments. RETURNING = return type.',
+          springBootCode: `// Java / Spring Boot equivalent:
+public interface TaxCalculator {
+    BigDecimal calculate(BigDecimal amount);
+}
+
+@Service
+public class EuTaxCalculator implements TaxCalculator {
+    @Override // In ABAP: METHOD zif_tax_calculator~calculate
+    public BigDecimal calculate(BigDecimal amount) {
+        return amount.multiply(new BigDecimal("0.20"));
+    }
+}`,
+          expressCode: `// Node.js / Express.js equivalent:
+class EuTaxCalculator {
+  calculate(amount) {
+    return amount * 0.20;
+  }
+}
+export const taxService = new EuTaxCalculator();`
+        }
+      },
+      {
+        name: '0.4 ABAP Dictionary & Modern Open SQL: SELECT with Host Variables (@)',
+        sapDocRef: 'SAP ABAP Core: Modern ABAP SQL (Open SQL) & Host Variable Escape',
+        syntax: `" Modern ABAP SQL (Clean Core standard)
+SELECT FROM /dmo/travel
+  FIELDS travel_id, description, begin_date, end_date, total_price, currency_code
+  WHERE customer_id = @lv_customer_id
+  ORDER BY begin_date DESCENDING
+  INTO TABLE @DATA(lt_travels).`,
+        laymanAnalogy: 'Think of ABAP SQL as Spring Data JPA or Prisma ORM built directly into the programming language itself! You do not need to install JDBC drivers or configure connection pools. To keep database column names separate from your local program variables, ABAP uses the `@` sign before local variables (`@lv_customer_id`). It works like prepared statement parameters (`:customerId` or `?`) in SQL.',
+        technicalDefinition: `Modern ABAP SQL (formerly Open SQL) executes directly against the underlying SAP HANA database with complete schema abstraction. The \`FIELDS\` clause specifies explicit projection (Clean Core rule: \`SELECT *\` is prohibited). The \`@\` symbol is the host variable escape character: it tells the ABAP SQL parser that the token is a program variable, not a database column. Inline target tables are declared with \`@DATA(lt_target)\`.`,
+        underTheHood: `The ABAP Database Interface (DBI) transforms ABAP SQL statements into native SAP HANA SQL queries with parameterized statement caching. Results are transferred into the application server buffer using optimized columnar bulk-fetch protocols.`,
+        commonPitfall: `Forgetting the \`@\` escape symbol in modern ABAP SQL. Writing \`WHERE customer_id = lv_customer_id\` will cause a compile error: "The escape character @ must be used for host variable lv_customer_id." Always prepend \`@\` to ABAP variables used inside SQL.`,
+        modernExample: `METHOD if_oo_adt_classrun~main.
+  FINAL(lv_target_curr) = 'EUR'.
+
+  " Query database table with projection and host variable escaping
+  SELECT FROM /dmo/travel
+    FIELDS travel_id, agency_id, total_price, currency_code
+    WHERE currency_code = @lv_target_curr
+    ORDER BY total_price DESCENDING
+    UP TO 5 ROWS
+    INTO TABLE @DATA(lt_top_travels).
+
+  IF sy-subrc = 0.
+    out->write( |Retrieved { lines( lt_top_travels ) } Euro travels:| ).
+    out->write( lt_top_travels ).
+  ELSE.
+    out->write( 'No records found.' ).
+  ENDIF.
+ENDMETHOD.`,
+        springBootBridge: {
+          explanation: 'ABAP SQL with @host_var is Spring Data JPA with @Param or prepared statements (WHERE c = :param). INTO TABLE @DATA(t) is automatic List<DTO> projection.',
+          springBootCode: `// Java / Spring Boot equivalent (Spring Data JPA):
+@Query("SELECT t.travelId, t.agencyId, t.totalPrice, t.currencyCode " +
+       "FROM TravelEntity t WHERE t.currencyCode = :currency ORDER BY t.totalPrice DESC")
+List<TravelSummaryDTO> findTopTravelsByCurrency(@Param("currency") String currency);`,
+          expressCode: `// Node.js / Express.js equivalent (Prisma / pg):
+const topTravels = await prisma.travel.findMany({
+  where: { currencyCode: targetCurrency },
+  select: { travelId: true, agencyId: true, totalPrice: true, currencyCode: true },
+  orderBy: { totalPrice: 'desc' },
+  take: 5
+});`
+        }
+      },
+      {
+        name: '0.5 CDS Entities: Declarative Domain Models & The ZI_ vs ZC_ Pattern',
+        sapDocRef: 'SAP Core Data Services (CDS) Entity Architecture & VDM Rules',
+        syntax: `@EndUserText.label: 'Travel Interface Entity'
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+define root view entity ZI_Travel
+  as select from /dmo/travel
+  composition [0..*] of ZI_Booking as _Booking
+{
+  key travel_id     as TravelId,
+      agency_id     as AgencyId,
+      customer_id   as CustomerId,
+      begin_date    as BeginDate,
+      end_date      as EndDate,
+      _Booking      // Composition association exposed
+}`,
+        laymanAnalogy: 'Think of Core Data Services (CDS) as your JPA `@Entity` or Prisma schema definition. It creates an intelligent database view with relationships. The golden architectural rule in SAP is: `ZI_...` is your Private Core Domain Entity (like an internal database schema), and `ZC_...` is your Public Consumption Projection (like a GraphQL resolver or REST DTO for the frontend).',
+        technicalDefinition: `Core Data Services (CDS) is the semantic data layer of SAP HANA. Unlike legacy DDIC views, CDS View Entities define type-safe relational models, annotations (@UI, @EndUserText), compositions (\`composition of\`), and lazy joins (\`association\`). In RAP, the Interface View (\`ZI_...\`) defines the core business object model, while Projection Views (\`ZC_...\`) define tailored consumer facades with UI annotations for SAP Fiori or custom React frontends.`,
+        underTheHood: `The ABAP CDS compiler generates an advanced SQL view definition directly in the SAP HANA catalog. When executed, SAP HANA pushes down calculations, currency conversions, and joins directly to the hardware CPU cache lines, executing at millions of records per millisecond.`,
+        commonPitfall: `Exposing database table names directly to the UI. Never bind a frontend or UI service directly to raw tables or \`ZI_\` entities. Always project through a \`ZC_\` consumption view to maintain Clean Core encapsulation.`,
+        modernExample: `@EndUserText.label: 'Travel Consumption Projection'
+@AccessControl.authorizationCheck: #NOT_REQUIRED
+define root view entity ZC_Travel
+  provider contract transactional_query
+  as projection on ZI_Travel
+{
+  key TravelId,
+      AgencyId,
+      CustomerId,
+      BeginDate,
+      EndDate,
+      /* Redirected composition to child projection */
+      _Booking : redirected to composition child ZC_Booking
+}`,
+        springBootBridge: {
+          explanation: 'ZI_ is JPA @Entity (Internal Domain Model). ZC_ is REST API DTO / Projection. Composition [0..*] is @OneToMany(cascade = CascadeType.ALL). Association is @ManyToOne(fetch = FetchType.LAZY).',
+          springBootCode: `// Java / Spring Boot equivalent:
+// ZI_Travel (Internal Entity):
+@Entity
+@Table(name = "dmo_travel")
+public class TravelEntity {
+    @Id private String travelId;
+    @OneToMany(mappedBy = "travel", cascade = CascadeType.ALL)
+    private List<BookingEntity> bookings;
+}
+
+// ZC_Travel (Public API Projection DTO):
+public record TravelResponseDTO(
+    String travelId,
+    String agencyId,
+    LocalDate beginDate,
+    List<BookingSummaryDTO> bookings
+) {}`,
+          expressCode: `// Node.js / Express.js equivalent (Prisma Schema):
+// ZI_ (Model):
+model Travel {
+  travelId   String    @id
+  agencyId   String
+  bookings   Booking[]
+}
+// ZC_ (API Response / Schema Projection):
+// Exposes only client-facing fields over REST/GraphQL`
+        }
+      }
+    ],
+
+    showdown: {
+      title: 'Architectural Showdown: Classic Procedural ABAP vs Modern ABAP Cloud Clean Core',
+      verdict: 'Legacy procedural ABAP code contains global mutable state, untyped tables with header lines, and obsolete Dynpro statements that are fundamentally incompatible with SAP BTP and S/4HANA Cloud. Modern ABAP Cloud Clean Core enforces strict object orientation, compile-time immutability with FINAL, and standardized execution via IF_OO_ADT_CLASSRUN.',
+      elementA: {
+        name: 'Legacy Procedural ABAP (1990s Monolith)',
+        syntax: `REPORT z_legacy_travel.
+TABLES: /dmo/travel.
+DATA: it_travel TYPE TABLE OF /dmo/travel WITH HEADER LINE.
+
+SELECT * FROM /dmo/travel INTO TABLE it_travel.
+LOOP AT it_travel.
+  WRITE: / it_travel-travel_id, it_travel-total_price.
+ENDLOOP.`,
+        pros: [
+          'Quick to write one-off throwaway scripts',
+          'Permissive compiler allows sloppy implicit typing'
+        ],
+        cons: [
+          'Completely banned in ABAP Cloud / Clean Core (fatal compile errors)',
+          'Header line tables pollute global session memory and create race conditions',
+          'Dynpro WRITE output cannot be exposed to web APIs or modern React frontends',
+          'SELECT * causes catastrophic full-table scans on HANA columnar memory'
+        ]
+      },
+      elementB: {
+        name: 'Modern ABAP Cloud Clean Core (2026 Enterprise)',
+        syntax: `CLASS zcl_modern_travel DEFINITION PUBLIC FINAL CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES if_oo_adt_classrun.
+ENDCLASS.
+
+CLASS zcl_modern_travel IMPLEMENTATION.
+  METHOD if_oo_adt_classrun~main.
+    SELECT FROM /dmo/travel
+      FIELDS travel_id, total_price
+      UP TO 100 ROWS
+      INTO TABLE @FINAL(lt_travels).
+
+    LOOP AT lt_travels INTO FINAL(ls_travel).
+      out->write( |Travel #{ ls_travel-travel_id }: EUR { ls_travel-total_price }| ).
+    ENDLOOP.
+  ENDMETHOD.
+ENDCLASS.`,
+        pros: [
+          '100% Clean Core compliant, runs identically on S/4HANA Cloud and SAP BTP',
+          'Strict immutability via FINAL(var) eliminates shared state side effects',
+          'Type-safe ABAP SQL projections maximize SAP HANA in-memory performance',
+          'Structured JSON/OData ready for modern React, Vue, and Angular frontends'
+        ],
+        cons: [
+          'Requires understanding modern OOP and constructor expressions',
+          'Strict compiler rejects sloppy shortcuts'
+        ]
+      },
+      comparisonTable: [
+        {
+          feature: 'Execution Model',
+          elementA: 'Procedural Report (REPORT z_...)',
+          elementB: 'Strict OOP Class (IF_OO_ADT_CLASSRUN)',
+          winner: 'Modern Clean Core'
+        },
+        {
+          feature: 'Memory Management',
+          elementA: 'Untyped tables WITH HEADER LINE',
+          elementB: 'Separated typed tables & work areas',
+          winner: 'Modern Clean Core'
+        },
+        {
+          feature: 'Immutability Support',
+          elementA: 'None (Global mutable state)',
+          elementB: 'Compile-time FINAL(var)',
+          winner: 'Modern Clean Core'
+        },
+        {
+          feature: 'Database Querying',
+          elementA: 'Unchecked SELECT * without host escape',
+          elementB: 'Strict FIELDS projection with @host_var',
+          winner: 'Modern Clean Core'
+        },
+        {
+          feature: 'Cloud & BTP Ready',
+          elementA: '0% (Hard compile error in Cloud Language Version 5)',
+          elementB: '100% Certified Clean Core standard',
+          winner: 'Modern Clean Core'
+        }
+      ]
+    },
+
+    files: [
+      {
+        path: 'src/zcl_prereq_foundation.clas.abap',
+        language: 'abap',
+        description: 'Zero-to-Hero Foundation Class demonstrating Variables, Internal Tables, and Control Flow',
+        code: `CLASS zcl_prereq_foundation DEFINITION PUBLIC FINAL CREATE PUBLIC.
+  PUBLIC SECTION.
+    INTERFACES if_oo_adt_classrun.
+
+    TYPES: BEGIN OF ty_employee,
+             emp_id TYPE string,
+             name   TYPE string,
+             salary TYPE decfloat16,
+           END OF ty_employee,
+           tt_employees TYPE STANDARD TABLE OF ty_employee WITH EMPTY KEY.
+ENDCLASS.
+
+CLASS zcl_prereq_foundation IMPLEMENTATION.
+  METHOD if_oo_adt_classrun~main.
+    " 1. Inline declaration with FINAL and DATA
+    FINAL(lv_dept)  = 'Core Platform Engineering'.
+    DATA(lv_active) = abap_true.
+
+    " 2. Internal table population using VALUE
+    FINAL(lt_team) = VALUE tt_employees(
+      ( emp_id = 'E101' name = 'Kavita Rao' salary = '95000.00' )
+      ( emp_id = 'E102' name = 'David Chen' salary = '98000.00' )
+    ).
+
+    " 3. Iteration with LOOP AT and string formatting
+    DATA lv_payroll_sum TYPE decfloat16 VALUE 0.
+    LOOP AT lt_team INTO FINAL(ls_member).
+      lv_payroll_sum = lv_payroll_sum + ls_member-salary.
+      out->write( |Staff: { ls_member-name } ({ ls_member-emp_id }) -> \${ ls_member-salary }| ).
+    ENDLOOP.
+
+    out->write( |Department { lv_dept } Payroll Total: \${ lv_payroll_sum }| ).
+  ENDMETHOD.
+ENDCLASS.`
+      }
+    ]
+  },
+
+  // =========================================================================
   // DAY 1: MODERN ABAP FUNDAMENTALS
   // =========================================================================
   {
@@ -35,29 +478,26 @@ lv_mutable           = 'Updated Value'.
 In the ABAP RESTful Application Programming Model (RAP), immutability is vital. Inside Local Handler Classes (\`lhc_travel\` in Behavior Pool \`/DMO/BP_TRAVEL_M\`), determinations and validations receive entity keys and root state. By declaring incoming parameters and intermediate keys with \`FINAL(lt_travel_keys)\`, you mathematically guarantee that your transactional handler logic is idempotent and cannot corrupt the internal transactional buffer during phase execution.`,
         underTheHood: `During compilation, the ABAP Virtual Machine (ABAP VM) assigns \`FINAL\` variables to the local execution stack in the current internal session roll area. Because the runtime kernel knows the memory address will never be mutated after initialization, it can eliminate CPU cache line synchronization fences and reuse CPU register allocations across multiple operand reads. Furthermore, in unit testing with ABAP Unit, immutable references eliminate shared mutable state, preventing concurrency bugs.`,
         commonPitfall: `The "Universal DATA" habit: developers migrating from pre-7.40 ABAP reflexively use \`DATA(var)\` for every inline declaration. This violates Clean Core static analysis rules (ATC check: "Variables assigned only once should be declared with FINAL"). If an intermediate calculation, entity key, or BAPI/EML response is never reassigned, declare it with \`FINAL(var)\`. Reserve \`DATA(var)\` strictly for loop counters or accumulators that genuinely mutate.`,
-        modernExample: `METHOD /dmo/if_travel_handler~validate_dates.
-  " Fetch travel root keys immutably - guaranteed never modified in validation
-  FINAL(lt_travel_keys) = CORRESPONDING /dmo/t_travel_keys( keys ).
+        modernExample: `METHOD calculate_employee_net_pay.
+  " 1. Immutable base parameters - guaranteed never modified during calculation
+  FINAL(lv_base_salary) = 85000.
+  FINAL(lv_tax_rate)    = '0.20'. " 20% flat tax rate
 
-  " Read transactional buffer via EML (Entity Manipulation Language)
-  READ ENTITIES OF /dmo/i_travel_m IN LOCAL MODE
-    ENTITY Travel
-    FIELDS ( BeginDate EndDate )
-    WITH CORRESPONDING #( lt_travel_keys )
-    RESULT FINAL(lt_travel_data)
-    FAILED FINAL(lt_failed).
+  " 2. Mutable accumulator for deductions and bonuses
+  DATA(lv_net_salary)   = lv_base_salary.
 
-  LOOP AT lt_travel_data INTO FINAL(ls_travel).
-    " Validate that EndDate is chronologically after BeginDate
-    IF ls_travel-EndDate < ls_travel-BeginDate.
-      " Report error without modifying transactional state
-      APPEND VALUE #( %tky = ls_travel-%tky
-                      %msg = new_message( id       = '/DMO/CM_TRAVEL'
-                                          number   = '003'
-                                          severity = if_abap_behv_message=>severity-error ) )
-        TO reported-travel.
-    ENDIF.
-  ENDLOOP.
+  " 3. Apply bonus if performance rating exceeds threshold
+  FINAL(lv_rating) = 5.
+  IF lv_rating >= 4.
+    DATA(lv_bonus) = 5000.
+    lv_net_salary  = lv_net_salary + lv_bonus.
+  ENDIF.
+
+  " 4. Deduct taxes
+  lv_net_salary = lv_net_salary - ( lv_net_salary * lv_tax_rate ).
+
+  " Output net calculation result
+  rv_net_payout = lv_net_salary.
 ENDMETHOD.`,
         springBootBridge: {
           explanation: `If you know Spring Boot (Java) or Express.js (Node.js), this ABAP method is literally a standard entity validator hook (like @PrePersist in JPA or a validation middleware in Express). It receives an array of entity IDs, queries the database/buffer for their BeginDate and EndDate, checks if EndDate is before BeginDate, and if so, pushes an error into the HTTP error response array (reported-travel)!`,
