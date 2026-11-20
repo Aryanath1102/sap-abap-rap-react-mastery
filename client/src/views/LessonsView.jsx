@@ -743,6 +743,37 @@ export function LessonsView({
                     <div className="p-4 sm:p-5 rounded-2xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 font-mono text-xs sm:text-sm text-slate-800 dark:text-slate-200 overflow-x-auto shadow-xs">
                       <pre className="whitespace-pre-wrap">{kw.modernExample}</pre>
                     </div>
+
+                    {/* Spring Boot & Express.js Developer Decoder */}
+                    {kw.springBootBridge && (
+                      <div className="p-5 rounded-2xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 space-y-3">
+                        <div className="flex items-center gap-2 text-xs font-bold text-indigo-900 dark:text-indigo-300">
+                          <Sparkles className="w-4 h-4 text-indigo-600" />
+                          <span>Spring Boot &amp; Express.js Developer Decoder (Line-by-Line Translation):</span>
+                        </div>
+                        <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans">
+                          {kw.springBootBridge.explanation}
+                        </p>
+                        <div className="grid grid-cols-1 md:grid-cols-2 gap-3 pt-1">
+                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5 shadow-2xs">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-mono block">
+                              🌱 Spring Boot / Java Equivalent:
+                            </span>
+                            <pre className="text-[11px] font-mono text-slate-800 dark:text-slate-200 overflow-x-auto whitespace-pre leading-relaxed">
+                              {kw.springBootBridge.springBootCode}
+                            </pre>
+                          </div>
+                          <div className="p-3.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1.5 shadow-2xs">
+                            <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-400 font-mono block">
+                              ⚡ Express.js / Node.js Equivalent:
+                            </span>
+                            <pre className="text-[11px] font-mono text-slate-800 dark:text-slate-200 overflow-x-auto whitespace-pre leading-relaxed">
+                              {kw.springBootBridge.expressCode}
+                            </pre>
+                          </div>
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
               </article>

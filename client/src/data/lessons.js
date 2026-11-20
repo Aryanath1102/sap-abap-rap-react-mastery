@@ -58,7 +58,57 @@ In the ABAP RESTful Application Programming Model (RAP), immutability is vital. 
         TO reported-travel.
     ENDIF.
   ENDLOOP.
-ENDMETHOD.`
+ENDMETHOD.`,
+        springBootBridge: {
+          explanation: `If you know Spring Boot (Java) or Express.js (Node.js), this ABAP method is literally a standard entity validator hook (like @PrePersist in JPA or a validation middleware in Express). It receives an array of entity IDs, queries the database/buffer for their BeginDate and EndDate, checks if EndDate is before BeginDate, and if so, pushes an error into the HTTP error response array (reported-travel)!`,
+          springBootCode: `// Spring Boot (Java) Equivalent:
+@Component
+public class TravelValidator {
+    @Autowired
+    private TravelRepository travelRepo; // in ABAP: READ ENTITIES OF ...
+
+    public void validateDates(List<TravelKey> keys, BindingResult errors) {
+        // FINAL(lt_travel_keys)
+        final List<TravelKey> travelKeys = keys;
+
+        // READ ENTITIES OF ... IN LOCAL MODE
+        final List<Travel> travelData = travelRepo.findAllById(travelKeys);
+
+        // LOOP AT lt_travel_data INTO FINAL(ls_travel)
+        for (final Travel travel : travelData) {
+            // IF ls_travel-EndDate < ls_travel-BeginDate
+            if (travel.getEndDate().isBefore(travel.getBeginDate())) {
+                // APPEND ... TO reported-travel
+                errors.rejectValue("endDate", "date.invalid", "End date must be after begin date");
+            }
+        }
+    }
+}`,
+          expressCode: `// Express.js + Prisma / TypeORM (Node.js) Equivalent:
+async function validateDates(req, res, next) {
+    const { keys } = req.body; // incoming keys
+
+    // READ ENTITIES OF ... IN LOCAL MODE
+    const travelData = await prisma.travel.findMany({
+        where: { id: { in: keys } },
+        select: { id: true, beginDate: true, endDate: true }
+    });
+
+    // LOOP AT lt_travel_data INTO FINAL(ls_travel)
+    for (const travel of travelData) {
+        // IF ls_travel-EndDate < ls_travel-BeginDate
+        if (new Date(travel.endDate) < new Date(travel.beginDate)) {
+            // APPEND ... TO reported-travel
+            return res.status(400).json({
+                error: 'End date must be chronologically after begin date',
+                targetField: 'endDate',
+                entityId: travel.id
+            });
+        }
+    }
+    next();
+}`
+        }
       },
       {
         name: 'Constructing Complex Deep Tables with VALUE #( ) and FOR',
