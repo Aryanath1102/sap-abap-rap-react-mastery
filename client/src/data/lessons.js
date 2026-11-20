@@ -4,7 +4,9 @@
  * References: Discovering ABAP RAP series & SAP Innovation Hub RAP "Get to Know" series.
  */
 
-export const LESSONS = [
+import { DAY_ASSIGNMENTS, BEGINNER_BRIDGES } from './dayAssignments';
+
+const BASE_LESSONS = [
   // =========================================================================
   // DAY 1: MODERN ABAP FUNDAMENTALS
   // =========================================================================
@@ -2945,3 +2947,15 @@ S/4HANA Cloud (RAP Clean Core Backend)`,
     }
   }
 ];
+
+export const LESSONS = BASE_LESSONS.map((l) => {
+  const dayAssignments = DAY_ASSIGNMENTS[l.id] || [];
+  const bridge = BEGINNER_BRIDGES[l.id] || null;
+  return {
+    ...l,
+    beginnerBridge: bridge,
+    assignments: dayAssignments,
+    assignment: dayAssignments[9] || dayAssignments[0] || l.assignment
+  };
+});
+

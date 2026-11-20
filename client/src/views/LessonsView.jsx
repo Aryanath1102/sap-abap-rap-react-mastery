@@ -52,8 +52,12 @@ export function LessonsView({
   const prevLesson = currentIndex > 0 ? LESSONS[currentIndex - 1] : null;
   const nextLesson = currentIndex < LESSONS.length - 1 ? LESSONS[currentIndex + 1] : null;
 
+  const assignments = currentLesson.assignments || (currentLesson.assignment ? [currentLesson.assignment] : []);
+  const [activeAssignmentIndex, setActiveAssignmentIndex] = useState(0);
+  const currentAssignment = assignments[activeAssignmentIndex] || assignments[0] || currentLesson.assignment;
+
   const [activeFileIndex, setActiveFileIndex] = useState(0);
-  const [userCode, setUserCode] = useState(currentLesson.assignment.starterCode || '');
+  const [userCode, setUserCode] = useState(currentAssignment?.starterCode || '');
   const [submitting, setSubmitting] = useState(false);
   const [validationResult, setValidationResult] = useState(null);
   const [showHint, setShowHint] = useState(false);
@@ -62,10 +66,19 @@ export function LessonsView({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [viewTab, setViewTab] = useState('all'); // 'all', 'narrative', 'keywords', 'showdown', 'code', 'lab'
   const [copiedIndices, setCopiedIndices] = useState({});
+  const [solvedExerciseIds, setSolvedExerciseIds] = useState(() => {
+    try {
+      return JSON.parse(localStorage.getItem('sap_solved_exercises_list') || '[]');
+    } catch {
+      return [];
+    }
+  });
 
   // When active lesson changes, reset editor code and fetch past submissions
   useEffect(() => {
-    setUserCode(currentLesson.assignment.starterCode || '');
+    setActiveAssignmentIndex(0);
+    const firstAsg = (currentLesson.assignments && currentLesson.assignments[0]) || currentLesson.assignment;
+    setUserCode(firstAsg?.starterCode || '');
     setValidationResult(null);
     setShowHint(false);
     setShowSolution(false);
@@ -73,6 +86,15 @@ export function LessonsView({
 
     loadSubmissions(currentLesson.id);
   }, [currentLesson.id]);
+
+  const handleSelectAssignment = (idx) => {
+    setActiveAssignmentIndex(idx);
+    const target = assignments[idx];
+    setUserCode(target?.starterCode || '');
+    setValidationResult(null);
+    setShowHint(false);
+    setShowSolution(false);
+  };
 
   async function loadSubmissions(lessonId) {
     try {
@@ -108,10 +130,23 @@ export function LessonsView({
       setSubmissionsHistory(res.history || []);
 
       if (res.validation.status === 'passed') {
-        onShowToast?.(`Clean Core Certified! Grade: ${res.validation.grade} (${res.validation.complianceScore}%)`, 'success');
+        const solvedKey = `${currentLesson.id}-${currentAssignment.id}`;
+        if (!solvedExerciseIds.includes(solvedKey)) {
+          const nextSolved = [...solvedExerciseIds, solvedKey];
+          setSolvedExerciseIds(nextSolved);
+          try {
+            localStorage.setItem('sap_solved_exercises_list', JSON.stringify(nextSolved));
+          } catch {}
+        }
+
         onRefreshProgress?.();
+        if (currentAssignment.isCapstone) {
+          onShowToast?.(`🏆 Spectacular! You conquered the Day ${currentLesson.day} Master Capstone! All concepts mastered!`, 'success');
+        } else {
+          onShowToast?.(`🎉 Exercise ${currentAssignment.id} Passed! Clean Core compliance verified!`, 'success');
+        }
       } else {
-        onShowToast?.(`Review needed: ${res.validation.violations.length} issue(s) detected.`, 'error');
+        onShowToast?.(`ATC Validation found ${res.validation.violations?.length || 1} issues. See remediation below.`, 'warning');
       }
     } catch (err) {
       onShowToast?.(`Submission error: ${err.message}`, 'error');
@@ -402,7 +437,7 @@ export function LessonsView({
             </h2>
           </div>
 
-          {/* Vlog Hook Banner */}
+          {/* Lead Architect Keynote Hook Banner */}
           {currentLesson.vlogHook && (
             <div className="relative overflow-hidden rounded-2xl bg-gradient-to-r from-sky-900 via-indigo-950 to-slate-950 border border-sky-800/60 p-5 sm:p-6 text-white shadow-md">
               <div className="flex items-start gap-4">
@@ -423,6 +458,86 @@ export function LessonsView({
                   </p>
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ZERO-TO-HERO BEGINNER BRIDGE: For Developers Who Never Learned Classic ABAP or Any SAP */}
+          {currentLesson.beginnerBridge && (
+            <div className="rounded-3xl border-2 border-emerald-500/30 bg-gradient-to-br from-emerald-500/5 via-sky-500/5 to-transparent p-6 sm:p-7 space-y-5 shadow-xs">
+              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-emerald-500/20 pb-3">
+                <div className="flex items-center gap-2.5">
+                  <div className="w-8 h-8 rounded-xl bg-emerald-600 text-white flex items-center justify-center shadow-xs">
+                    <Sparkles className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <span className="text-[10px] font-bold uppercase tracking-wider text-emerald-700 dark:text-emerald-400 font-mono">
+                      Zero-to-Hero Fast Track • Beginner Bridge
+                    </span>
+                    <h3 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                      {currentLesson.beginnerBridge.title}
+                    </h3>
+                  </div>
+                </div>
+                <span className="text-xs px-3 py-1 rounded-full font-bold bg-emerald-100 dark:bg-emerald-950 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 self-start sm:self-auto">
+                  No Prior SAP Experience Required
+                </span>
+              </div>
+
+              {/* Summary */}
+              <p className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans">
+                {currentLesson.beginnerBridge.summary}
+              </p>
+
+              {/* Why Old SAP Was Hard vs Why Modern RAP Is Clean */}
+              {currentLesson.beginnerBridge.whyClassicWasHard && (
+                <div className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-emerald-200 dark:border-emerald-900/50 space-y-1.5">
+                  <span className="text-xs font-bold text-slate-900 dark:text-white flex items-center gap-1.5">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-500" />
+                    <span>Why Old SAP Was Hard vs Why Modern RAP Is Clean &amp; Modern:</span>
+                  </span>
+                  <p className="text-xs text-slate-700 dark:text-slate-300 leading-relaxed">
+                    {currentLesson.beginnerBridge.whyClassicWasHard}
+                  </p>
+                </div>
+              )}
+
+              {/* Jargon Buster Grid */}
+              {currentLesson.beginnerBridge.jargonBuster?.length > 0 && (
+                <div className="space-y-2 pt-1">
+                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700 dark:text-slate-300 block">
+                    SAP Jargon Buster (Translated Into Modern Web &amp; Backend Concepts):
+                  </span>
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-2.5">
+                    {currentLesson.beginnerBridge.jargonBuster.map((item, idx) => (
+                      <div key={idx} className="p-3 rounded-xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 space-y-1">
+                        <div className="flex items-center justify-between text-xs">
+                          <span className="font-mono font-bold text-sky-700 dark:text-sky-300">{item.term}</span>
+                          <span className="text-[10px] text-slate-400">Concept</span>
+                        </div>
+                        <p className="text-xs text-slate-800 dark:text-slate-200">{item.translation}</p>
+                        <div className="text-[11px] text-emerald-700 dark:text-emerald-400 font-mono pt-0.5">
+                          ↳ Modern Web: {item.modernEquivalent}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+
+              {/* Pro Tips */}
+              {currentLesson.beginnerBridge.proTips?.length > 0 && (
+                <div className="p-3.5 rounded-xl bg-emerald-500/10 border border-emerald-500/20 text-xs text-emerald-950 dark:text-emerald-200 space-y-1">
+                  <span className="font-bold flex items-center gap-1.5 text-emerald-800 dark:text-emerald-300">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    <span>Architect Tips for Fast Mastery:</span>
+                  </span>
+                  <ul className="list-disc pl-5 space-y-0.5 text-slate-700 dark:text-slate-300">
+                    {currentLesson.beginnerBridge.proTips.map((tip, i) => (
+                      <li key={i}>{tip}</li>
+                    ))}
+                  </ul>
+                </div>
+              )}
             </div>
           )}
 
@@ -866,33 +981,126 @@ export function LessonsView({
       )}
 
       {/* =====================================================================
-          SECTION 5: CHAPTER FINAL PAGE — HANDS-ON CODING LAB & ASSIGNMENT
+          SECTION 5: CHAPTER FINAL PAGE — 10 PROGRESSIVE HANDS-ON ASSIGNMENTS
       ===================================================================== */}
       {(viewTab === 'all' || viewTab === 'lab') && (
         <section id="section-assignment" className="bg-white dark:bg-slate-900 border-2 border-sky-500/40 dark:border-sky-500/30 rounded-3xl p-6 sm:p-8 shadow-md space-y-6 scroll-mt-24">
-          <div className="flex items-center gap-2 p-3 rounded-2xl bg-sky-500/10 border border-sky-400/30 text-sky-700 dark:text-sky-300">
-            <Award className="w-5 h-5 text-sky-600 shrink-0" />
-            <span className="text-xs font-bold uppercase tracking-wider">
-              Chapter Final Page • Hands-On Capstone Assignment &amp; Certification
-            </span>
+          {/* Header & Overall Chapter Progress */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 rounded-2xl bg-gradient-to-r from-sky-500/10 via-indigo-500/10 to-transparent border border-sky-400/30">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-sky-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                <Award className="w-4 h-4" />
+              </div>
+              <div>
+                <span className="text-[10px] font-bold uppercase tracking-wider text-sky-700 dark:text-sky-300 font-mono">
+                  Chapter Final Page • Hands-On Lab Curriculum
+                </span>
+                <h3 className="text-sm font-bold text-slate-900 dark:text-white">
+                  10 Progressive Coding Exercises (Warm-up to Master Capstone)
+                </h3>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2">
+              <span className="text-xs px-3 py-1 rounded-full font-mono font-bold bg-white dark:bg-slate-800 text-sky-800 dark:text-sky-300 border border-sky-200 dark:border-slate-700">
+                Completed: {assignments.filter(a => solvedExerciseIds.includes(`${currentLesson.id}-${a.id}`)).length} / {assignments.length}
+              </span>
+              {isSolved && (
+                <span className="text-xs px-3 py-1 rounded-full font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Day Certified</span>
+                </span>
+              )}
+            </div>
           </div>
 
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 dark:border-slate-800 pb-4">
+          {/* 10-ASSIGNMENT INTERACTIVE STEPPER NAVIGATION */}
+          <div className="space-y-2">
+            <div className="flex items-center justify-between text-xs text-slate-500 dark:text-slate-400">
+              <span className="font-semibold uppercase tracking-wider text-[11px]">Select Assignment (1 to 10):</span>
+              <span className="font-mono text-[11px] text-amber-700 dark:text-amber-400 font-semibold">
+                Exercise 10 is the Big Master Capstone
+              </span>
+            </div>
+
+            <div className="flex items-center gap-2 overflow-x-auto thin-scroll pb-2">
+              {assignments.map((asg, idx) => {
+                const isSelected = activeAssignmentIndex === idx;
+                const isDone = solvedExerciseIds.includes(`${currentLesson.id}-${asg.id}`);
+                return (
+                  <button
+                    key={asg.id}
+                    onClick={() => handleSelectAssignment(idx)}
+                    className={`flex items-center gap-1.5 px-3.5 py-2 rounded-xl text-xs font-semibold shrink-0 transition ${
+                      isSelected
+                        ? 'bg-sky-600 text-white shadow-xs font-bold ring-2 ring-sky-400/30'
+                        : asg.isCapstone
+                        ? 'bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800 hover:bg-amber-100'
+                        : isDone
+                        ? 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800'
+                        : 'bg-slate-100 dark:bg-slate-800/80 text-slate-700 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                    }`}
+                  >
+                    {isDone ? (
+                      <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500 shrink-0" />
+                    ) : asg.isCapstone ? (
+                      <Award className="w-3.5 h-3.5 text-amber-500 shrink-0" />
+                    ) : (
+                      <span className="w-4 h-4 rounded-full bg-slate-300 dark:bg-slate-700 text-[10px] flex items-center justify-center font-mono shrink-0">
+                        {asg.id}
+                      </span>
+                    )}
+                    <span>{asg.isCapstone ? 'Ex 10 (Master Capstone)' : `Ex ${asg.id}`}</span>
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+
+          {/* ACTIVE ASSIGNMENT HEADER */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-y border-slate-100 dark:border-slate-800 py-4">
             <div>
-              <div className="inline-flex items-center gap-1.5 text-xs font-bold text-sky-600 dark:text-sky-400 uppercase tracking-wider mb-1">
-                <Code2 className="w-4 h-4" />
-                <span>Certification Lab Exercise</span>
+              <div className="flex items-center gap-2 mb-1">
+                <span className="text-xs font-mono font-bold px-2 py-0.5 rounded bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300">
+                  Exercise {currentAssignment.id} of {assignments.length}
+                </span>
+                <span className={`text-[11px] px-2.5 py-0.5 rounded-full font-bold ${
+                  currentAssignment.isCapstone
+                    ? 'bg-amber-100 dark:bg-amber-950 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-800'
+                    : currentAssignment.difficulty === 'Warm-up'
+                    ? 'bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300'
+                    : 'bg-indigo-100 dark:bg-indigo-950 text-indigo-800 dark:text-indigo-300'
+                }`}>
+                  {currentAssignment.isCapstone ? '🏆 Comprehensive Master Capstone (All Concepts Synthesized)' : currentAssignment.difficulty}
+                </span>
               </div>
-              <h2 className="text-lg sm:text-xl font-bold text-slate-900 dark:text-white">
-                {currentLesson.assignment.prompt}
+              <h2 className="text-base sm:text-lg font-bold text-slate-900 dark:text-white">
+                {currentAssignment.title}
               </h2>
             </div>
-            {isSolved && (
-              <span className="text-xs px-3 py-1.5 rounded-full font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 self-start sm:self-auto flex items-center gap-1.5 shrink-0">
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Solved &amp; Recorded in SQLite</span>
+
+            <div className="flex items-center gap-2 self-start sm:self-auto shrink-0">
+              <span className="text-xs text-slate-500 font-mono flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 dark:bg-slate-800">
+                <Clock className="w-3.5 h-3.5 text-slate-400" />
+                <span>~{currentAssignment.estimatedMinutes || 10} min</span>
               </span>
-            )}
+              {solvedExerciseIds.includes(`${currentLesson.id}-${currentAssignment.id}`) && (
+                <span className="text-xs px-2.5 py-1 rounded-lg font-semibold bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Passed</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          {/* Prompt Box */}
+          <div className="p-4 sm:p-5 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 space-y-2">
+            <span className="text-xs font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 block">
+              Assignment Specification &amp; Business Rules:
+            </span>
+            <div className="text-xs sm:text-sm text-slate-800 dark:text-slate-200 leading-relaxed font-sans whitespace-pre-wrap">
+              {currentAssignment.prompt}
+            </div>
           </div>
 
           {/* Interactive Code Editor */}
@@ -900,7 +1108,7 @@ export function LessonsView({
             <div className="flex items-center justify-between text-xs text-slate-500">
               <span className="font-mono">ABAP Cloud / Clean Core Coding Sandbox:</span>
               <button
-                onClick={() => setUserCode(currentLesson.assignment.starterCode || '')}
+                onClick={() => setUserCode(currentAssignment.starterCode || '')}
                 className="text-xs text-slate-500 hover:text-slate-800 dark:hover:text-slate-200 flex items-center gap-1 transition"
               >
                 <RotateCcw className="w-3 h-3" />
@@ -967,7 +1175,7 @@ export function LessonsView({
                 <span>Architect Guidance &amp; Hint:</span>
               </div>
               <ul className="list-disc pl-5 space-y-1 leading-relaxed">
-                {currentLesson.assignment.hints.map((h, i) => (
+                {(currentAssignment.hints || []).map((h, i) => (
                   <li key={i}>{h}</li>
                 ))}
               </ul>
@@ -981,7 +1189,7 @@ export function LessonsView({
                 <CheckCircle2 className="w-4 h-4 text-emerald-500" />
                 <span>Official Clean Core Reference Solution:</span>
               </div>
-              <CodeBlock code={currentLesson.assignment.solution} language="abap" title="Clean Core Reference Solution" />
+              <CodeBlock code={currentAssignment.solution || '// Solution not available'} language="abap" title={`${currentAssignment.title} — Reference Solution`} />
             </div>
           )}
 
