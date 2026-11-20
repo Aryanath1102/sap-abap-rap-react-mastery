@@ -1,105 +1,193 @@
 /**
- * Client API Service Layer connecting React to Node.js / Express + SQLite backend
+ * Client API Service Layer (Hybrid Dual-Mode: REST Server + In-Browser SQLite Engine)
+ * Automatically connects to Express + SQLite backend in local development,
+ * and gracefully falls back to browser-native storage on Vercel/Netlify static deployments.
  */
+import {
+  getLocalProgress,
+  updateLocalProgress,
+  resetLocalProgress,
+  getLocalProjectChecklists,
+  updateLocalProjectStep,
+  submitLocalAssignment,
+  getLocalSubmissions,
+  recordLocalQuizAttempt,
+  getLocalQuizHistory,
+  getLocalMentorMessages,
+  sendLocalMentorChat,
+  clearLocalMentorMessages,
+  generateLocalExportUrl
+} from './localDatabase';
 
 const API_BASE = '/api';
 
+// Helper with timeout to probe backend availability
+async function fetchWithTimeout(url, options = {}, timeoutMs = 2500) {
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
+// 1. User Progress
 export async function fetchProgress() {
-  const res = await fetch(`${API_BASE}/progress`);
-  if (!res.ok) throw new Error(`Failed to load progress: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/progress`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Backend offline / static deployment: use browser SQLite
+  }
+  return getLocalProgress();
 }
 
 export async function updateProgress(data) {
-  const res = await fetch(`${API_BASE}/progress`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(data)
-  });
-  if (!res.ok) throw new Error(`Failed to update progress: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/progress`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data)
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return updateLocalProgress(data);
 }
 
 export async function resetProgress() {
-  const res = await fetch(`${API_BASE}/progress/reset`, {
-    method: 'POST'
-  });
-  if (!res.ok) throw new Error(`Failed to reset progress: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/progress/reset`, { method: 'POST' });
+    if (res.ok) {
+      const data = await res.json();
+      return data.progress;
+    }
+  } catch {
+    // Fallback to local
+  }
+  return resetLocalProgress();
 }
 
+// 2. Project Checklists
 export async function fetchProjectChecklists() {
-  const res = await fetch(`${API_BASE}/projects`);
-  if (!res.ok) throw new Error(`Failed to load project checklists: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/projects`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return getLocalProjectChecklists();
 }
 
 export async function updateProjectStep(projectId, stepIndex, completed) {
-  const res = await fetch(`${API_BASE}/projects/${projectId}/steps`, {
-    method: 'PUT',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ stepIndex, completed })
-  });
-  if (!res.ok) throw new Error(`Failed to update project checklist: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/projects/${projectId}/steps`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ stepIndex, completed })
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return updateLocalProjectStep(projectId, stepIndex, completed);
 }
 
+// 3. Assignment Submissions & Static Code Validation
 export async function submitAssignment(lessonId, userCode) {
-  const res = await fetch(`${API_BASE}/assignments/submit`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ lessonId, userCode })
-  });
-  if (!res.ok) throw new Error(`Submission failed: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/assignments/submit`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ lessonId, userCode })
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return submitLocalAssignment(lessonId, userCode);
 }
 
 export async function fetchSubmissions(lessonId) {
-  const res = await fetch(`${API_BASE}/assignments/${lessonId}`);
-  if (!res.ok) throw new Error(`Failed to fetch submissions: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/assignments/${lessonId}`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return getLocalSubmissions(lessonId);
 }
 
+// 4. AI Mentor Chat
 export async function fetchMentorMessages() {
-  const res = await fetch(`${API_BASE}/mentor/messages`);
-  if (!res.ok) throw new Error(`Failed to fetch mentor messages: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/mentor/messages`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return getLocalMentorMessages();
 }
 
 export async function sendMentorMessage(content, apiKey = '') {
-  const res = await fetch(`${API_BASE}/mentor/chat`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ content, apiKey })
-  });
-  if (!res.ok) throw new Error(`Mentor chat failed: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/mentor/chat`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ content, apiKey })
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return sendLocalMentorChat(content);
 }
 
 export async function clearMentorChat() {
-  const res = await fetch(`${API_BASE}/mentor/messages`, {
-    method: 'DELETE'
-  });
-  if (!res.ok) throw new Error(`Failed to clear chat: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/mentor/messages`, { method: 'DELETE' });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return clearLocalMentorMessages();
 }
 
+// 5. Quiz Attempts
 export async function recordQuizAttempt(score, total, answersJson = {}) {
-  const res = await fetch(`${API_BASE}/quiz/attempt`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ score, total, answersJson })
-  });
-  if (!res.ok) throw new Error(`Failed to record quiz: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/quiz/attempt`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ score, total, answersJson })
+    });
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return recordLocalQuizAttempt(score, total, answersJson);
 }
 
 export async function fetchQuizHistory() {
-  const res = await fetch(`${API_BASE}/quiz/history`);
-  if (!res.ok) throw new Error(`Failed to fetch quiz history: HTTP ${res.status}`);
-  return res.json();
+  try {
+    const res = await fetchWithTimeout(`${API_BASE}/quiz/history`);
+    if (res.ok) return await res.json();
+  } catch {
+    // Fallback to local
+  }
+  return getLocalQuizHistory();
 }
 
+// 6. Data Export URL
 export function getExportUrl() {
-  return `${API_BASE}/export`;
+  try {
+    return generateLocalExportUrl();
+  } catch {
+    return `${API_BASE}/export`;
+  }
 }
