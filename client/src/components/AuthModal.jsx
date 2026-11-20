@@ -12,9 +12,15 @@ import {
   ArrowRight,
   ShieldAlert,
   Radio,
-  CheckCircle2
+  CheckCircle2,
+  Lock,
+  Mail,
+  User,
+  Clock,
+  AlertCircle,
+  Info
 } from 'lucide-react';
-import { login, logout, switchSession, registerUser } from '../services/api';
+import { login, logout, switchSession, register } from '../services/api';
 
 export function AuthModal({
   isOpen,
@@ -25,25 +31,39 @@ export function AuthModal({
   onShowToast
 }) {
   const [tab, setTab] = useState('login'); // 'login' | 'sessions' | 'register'
-  const [username, setUsername] = useState('');
-  const [email, setEmail] = useState('');
-  const [name, setName] = useState('');
-  const [role, setRole] = useState('student');
+  
+  // Login form state
+  const [loginUser, setLoginUser] = useState('');
+  const [loginPass, setLoginPass] = useState('');
+
+  // Register form state
+  const [regName, setRegName] = useState('');
+  const [regUsername, setRegUsername] = useState('');
+  const [regEmail, setRegEmail] = useState('');
+  const [regPassword, setRegPassword] = useState('');
+  const [regRole, setRegRole] = useState('student');
+
   const [loading, setLoading] = useState(false);
+  const [errorMsg, setErrorMsg] = useState('');
+  const [successMsg, setSuccessMsg] = useState('');
 
   if (!isOpen) return null;
 
-  const handleQuickLogin = async (userType) => {
+  const handleQuickLogin = async (persona) => {
+    setErrorMsg('');
+    setSuccessMsg('');
     try {
       setLoading(true);
-      const creds = userType === 'admin'
-        ? { usernameOrEmail: 'admin', role: 'admin' }
-        : { usernameOrEmail: 'developer', role: 'student' };
+      const creds = persona === 'admin'
+        ? { usernameOrEmail: 'Aryanath', password: 'Aryanath@1102' }
+        : { usernameOrEmail: 'developer', password: 'password123' };
+      
       const sess = await login(creds);
       onSessionChange(sess);
-      onShowToast?.(`Logged in concurrently as ${sess.name} (${sess.role.toUpperCase()})`, 'success');
+      onShowToast?.(`Authenticated as ${sess.name} (${sess.role.toUpperCase()})`, 'success');
       onClose();
     } catch (err) {
+      setErrorMsg(err.message || 'Authentication failed');
       onShowToast?.(err.message, 'error');
     } finally {
       setLoading(false);
@@ -52,18 +72,29 @@ export function AuthModal({
 
   const handleCustomLogin = async (e) => {
     e.preventDefault();
-    if (!username.trim()) {
-      onShowToast?.('Please enter a username or email', 'error');
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!loginUser.trim()) {
+      setErrorMsg('Please enter your username or email.');
+      return;
+    }
+    if (!loginPass.trim()) {
+      setErrorMsg('Please enter your password.');
       return;
     }
 
     try {
       setLoading(true);
-      const sess = await login({ usernameOrEmail: username, role });
+      const sess = await login({
+        usernameOrEmail: loginUser.trim(),
+        password: loginPass.trim()
+      });
       onSessionChange(sess);
-      onShowToast?.(`Logged in concurrently as ${sess.name}`, 'success');
+      onShowToast?.(`Signed in successfully as ${sess.name}`, 'success');
       onClose();
     } catch (err) {
+      setErrorMsg(err.message || 'Login failed.');
       onShowToast?.(err.message, 'error');
     } finally {
       setLoading(false);
@@ -72,18 +103,44 @@ export function AuthModal({
 
   const handleRegister = async (e) => {
     e.preventDefault();
-    if (!username.trim() || !email.trim()) {
-      onShowToast?.('Please provide both username and email', 'error');
+    setErrorMsg('');
+    setSuccessMsg('');
+
+    if (!regUsername.trim()) {
+      setErrorMsg('Please choose a username.');
+      return;
+    }
+    if (!regPassword.trim()) {
+      setErrorMsg('Please choose a password.');
       return;
     }
 
     try {
       setLoading(true);
-      const sess = registerUser({ username, email, name, role });
-      onSessionChange(sess);
-      onShowToast?.(`Registered & active session created for ${sess.name}`, 'success');
-      onClose();
+      const res = await register({
+        username: regUsername.trim(),
+        email: regEmail.trim(),
+        password: regPassword.trim(),
+        name: regName.trim(),
+        role: regRole
+      });
+
+      if (res?.pendingApproval) {
+        setSuccessMsg(
+          `Registration submitted for "${regUsername.trim()}"! Your account is pending Administrator approval by Aryanath. Once approved in the Admin Control Center, you will be able to log in.`
+        );
+        onShowToast?.('Registration submitted! Pending Admin Aryanath approval.', 'info');
+        setRegName('');
+        setRegUsername('');
+        setRegEmail('');
+        setRegPassword('');
+      } else if (res?.sessionId) {
+        onSessionChange(res);
+        onShowToast?.(`Account created and session activated for ${res.name}`, 'success');
+        onClose();
+      }
     } catch (err) {
+      setErrorMsg(err.message || 'Registration failed.');
       onShowToast?.(err.message, 'error');
     } finally {
       setLoading(false);
@@ -105,7 +162,6 @@ export function AuthModal({
     try {
       await logout(sessionId);
       onShowToast?.('Session terminated successfully', 'info');
-      // If closing current session, reload or trigger session change
       if (currentSession?.sessionId === sessionId) {
         window.location.reload();
       }
@@ -115,10 +171,10 @@ export function AuthModal({
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fade-in">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in">
       <div className="w-full max-w-lg rounded-3xl bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 shadow-2xl overflow-hidden flex flex-col">
         {/* Modal Header */}
-        <div className="p-6 bg-slate-50 dark:bg-slate-950/60 border-b border-slate-100 dark:border-slate-800 flex items-center justify-between">
+        <div className="p-6 bg-slate-50 dark:bg-slate-950/60 border-b border-slate-200 dark:border-slate-800 flex items-center justify-between">
           <div className="flex items-center gap-3">
             <div className="w-10 h-10 rounded-2xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center shadow-md shadow-sky-500/20">
               <KeyRound className="w-5 h-5" />
@@ -143,32 +199,34 @@ export function AuthModal({
         {/* Tab Switcher */}
         <div className="flex items-center border-b border-slate-200 dark:border-slate-800 bg-slate-100/70 dark:bg-slate-950/40 p-1.5 text-xs font-semibold">
           <button
-            onClick={() => setTab('login')}
+            onClick={() => { setTab('login'); setErrorMsg(''); setSuccessMsg(''); }}
             className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
               tab === 'login'
-                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
             <KeyRound className="w-3.5 h-3.5" />
             <span>Sign In</span>
           </button>
+
           <button
-            onClick={() => setTab('sessions')}
+            onClick={() => { setTab('sessions'); setErrorMsg(''); setSuccessMsg(''); }}
             className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
               tab === 'sessions'
-                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
-            <Radio className="w-3.5 h-3.5 text-emerald-500 animate-pulse" />
+            <Radio className="w-3.5 h-3.5 text-emerald-500" />
             <span>Active Sessions ({activeSessions.length})</span>
           </button>
+
           <button
-            onClick={() => setTab('register')}
+            onClick={() => { setTab('register'); setErrorMsg(''); setSuccessMsg(''); }}
             className={`flex-1 py-2 rounded-xl transition flex items-center justify-center gap-1.5 ${
               tab === 'register'
-                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs'
+                ? 'bg-white dark:bg-slate-900 text-sky-600 dark:text-sky-400 shadow-xs font-bold'
                 : 'text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white'
             }`}
           >
@@ -179,6 +237,26 @@ export function AuthModal({
 
         {/* Body Contents */}
         <div className="p-6 space-y-5 overflow-y-auto max-h-[70vh]">
+          {/* Error & Success Alerts */}
+          {errorMsg && (
+            <div className="p-3.5 rounded-2xl bg-rose-50 dark:bg-rose-950/50 border border-rose-200 dark:border-rose-800 text-rose-700 dark:text-rose-300 text-xs flex items-start gap-2.5 leading-relaxed">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-500 mt-0.5" />
+              <span className="flex-1">{errorMsg}</span>
+            </div>
+          )}
+
+          {successMsg && (
+            <div className="p-3.5 rounded-2xl bg-amber-50 dark:bg-amber-950/50 border border-amber-200 dark:border-amber-800 text-amber-800 dark:text-amber-200 text-xs flex items-start gap-2.5 leading-relaxed">
+              <Clock className="w-4 h-4 shrink-0 text-amber-500 mt-0.5" />
+              <div className="flex-1 space-y-1">
+                <p className="font-semibold">{successMsg}</p>
+                <p className="text-[11px] opacity-90">
+                  Please notify administrator Aryanath to approve your access in the Admin Control Center.
+                </p>
+              </div>
+            </div>
+          )}
+
           {/* TAB 1: SIGN IN */}
           {tab === 'login' && (
             <div className="space-y-5">
@@ -196,12 +274,12 @@ export function AuthModal({
                   >
                     <div className="flex items-center justify-between">
                       <span className="text-xs font-bold text-indigo-900 dark:text-indigo-300">
-                        Admin Architect
+                        Admin: Aryanath
                       </span>
                       <ShieldCheck className="w-4 h-4 text-indigo-600 dark:text-indigo-400" />
                     </div>
                     <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                      Unlocks Admin panel, session monitor &amp; audit controls
+                      Unlocks Admin approvals, sessions &amp; all tracks
                     </p>
                   </button>
 
@@ -227,36 +305,43 @@ export function AuthModal({
               <div className="relative flex items-center justify-center">
                 <div className="border-t border-slate-200 dark:border-slate-800 w-full" />
                 <span className="bg-white dark:bg-slate-900 px-3 text-[11px] font-bold uppercase tracking-wider text-slate-400 font-mono shrink-0">
-                  Or Sign In by Name / Email
+                  Or Sign In with Credentials
                 </span>
               </div>
 
               <form onSubmit={handleCustomLogin} className="space-y-3.5">
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Username or Email
+                    Username or Email <span className="text-rose-500">*</span>
                   </label>
-                  <input
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="e.g. nathan or admin@corp.com"
-                    className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  />
+                  <div className="relative">
+                    <User className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="text"
+                      value={loginUser}
+                      onChange={(e) => setLoginUser(e.target.value)}
+                      placeholder="e.g. Aryanath or developer"
+                      className="w-full text-xs font-semibold pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <div>
                   <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                    Select Role Privileges
+                    Password <span className="text-rose-500">*</span>
                   </label>
-                  <select
-                    value={role}
-                    onChange={(e) => setRole(e.target.value)}
-                    className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
-                  >
-                    <option value="student">Student / Full-Stack Developer</option>
-                    <option value="admin">Enterprise Administrator (Full Privileges)</option>
-                  </select>
+                  <div className="relative">
+                    <Lock className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                    <input
+                      type="password"
+                      value={loginPass}
+                      onChange={(e) => setLoginPass(e.target.value)}
+                      placeholder="••••••••••••"
+                      className="w-full text-xs font-semibold pl-9 pr-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                      required
+                    />
+                  </div>
                 </div>
 
                 <button
@@ -264,7 +349,7 @@ export function AuthModal({
                   disabled={loading}
                   className="w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-sky-600 hover:bg-sky-700 text-white transition flex items-center justify-center gap-2 shadow-xs"
                 >
-                  <span>{loading ? 'Authenticating...' : 'Sign In Concurrently'}</span>
+                  <span>{loading ? 'Authenticating...' : 'Sign In'}</span>
                   <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
@@ -281,7 +366,7 @@ export function AuthModal({
                 </span>
               </div>
 
-              <div className="space-y-2.5">
+              <div className="space-y-2">
                 {activeSessions.map((sess) => {
                   const isCurrent = sess.sessionId === currentSession?.sessionId;
                   return (
@@ -289,43 +374,34 @@ export function AuthModal({
                       key={sess.sessionId}
                       className={`p-3.5 rounded-2xl border transition flex items-center justify-between gap-3 ${
                         isCurrent
-                          ? 'bg-sky-50/80 dark:bg-sky-950/50 border-sky-300 dark:border-sky-800'
-                          : 'bg-slate-50 dark:bg-slate-950/50 border-slate-200 dark:border-slate-800'
+                          ? 'border-sky-300 dark:border-sky-800 bg-sky-50/40 dark:bg-sky-950/30'
+                          : 'border-slate-200 dark:border-slate-800 bg-white dark:bg-slate-950/50'
                       }`}
                     >
-                      <div className="min-w-0 space-y-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-xs font-bold text-slate-900 dark:text-white">
+                      <div className="space-y-1 min-w-0">
+                        <div className="flex items-center gap-2">
+                          <span className="text-xs font-bold text-slate-900 dark:text-white truncate">
                             {sess.name}
                           </span>
-                          <span className={`text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full border ${
-                            sess.role === 'admin'
-                              ? 'bg-indigo-100 text-indigo-800 dark:bg-indigo-950 dark:text-indigo-300 border-indigo-300'
-                              : 'bg-sky-100 text-sky-800 dark:bg-sky-950 dark:text-sky-300 border-sky-300'
-                          }`}>
-                            {sess.role}
-                          </span>
                           {isCurrent && (
-                            <span className="text-[10px] font-mono font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-950 px-2 py-0.5 rounded-full">
-                              ● This Tab
+                            <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-800 dark:text-sky-300 border border-sky-300 dark:border-sky-800">
+                              Active Context
                             </span>
                           )}
-                        </div>
-                        <div className="flex items-center gap-3 text-[11px] text-slate-500 dark:text-slate-400 font-mono">
-                          <span className="flex items-center gap-1">
-                            <Laptop className="w-3 h-3" />
-                            <span>{sess.device || 'Web Browser'}</span>
+                          <span className="text-[10px] font-bold uppercase tracking-wider px-2 py-0.5 rounded-full bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400">
+                            {sess.role}
                           </span>
-                          <span>•</span>
-                          <span>Track: {sess.activeTrack?.toUpperCase() || 'RAP'}</span>
+                        </div>
+                        <div className="text-[11px] text-slate-500 font-mono truncate">
+                          {sess.email} • Track: {sess.activeTrack?.toUpperCase() || 'RAP'} • {sess.device || 'Browser'}
                         </div>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
+                      <div className="flex items-center gap-1.5 shrink-0">
                         {!isCurrent && (
                           <button
                             onClick={() => handleSwitch(sess.sessionId)}
-                            className="px-3 py-1.5 rounded-xl bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-xs font-semibold text-slate-700 dark:text-slate-200 transition"
+                            className="px-2.5 py-1 rounded-xl text-xs font-bold bg-sky-100 hover:bg-sky-200 text-sky-800 dark:bg-sky-950 dark:text-sky-300 transition"
                           >
                             Switch
                           </button>
@@ -345,7 +421,7 @@ export function AuthModal({
             </div>
           )}
 
-          {/* TAB 3: REGISTER NEW USER */}
+          {/* TAB 3: REGISTER NEW USER (WITH ADMIN APPROVAL WORKFLOW) */}
           {tab === 'register' && (
             <form onSubmit={handleRegister} className="space-y-3.5">
               <div>
@@ -354,8 +430,8 @@ export function AuthModal({
                 </label>
                 <input
                   type="text"
-                  value={name}
-                  onChange={(e) => setName(e.target.value)}
+                  value={regName}
+                  onChange={(e) => setRegName(e.target.value)}
                   placeholder="e.g. Nathan Vance"
                   className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
@@ -363,14 +439,15 @@ export function AuthModal({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Username
+                  Preferred Username <span className="text-rose-500">*</span>
                 </label>
                 <input
                   type="text"
-                  value={username}
-                  onChange={(e) => setUsername(e.target.value)}
+                  value={regUsername}
+                  onChange={(e) => setRegUsername(e.target.value)}
                   placeholder="e.g. nathan_v"
                   className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  required
                 />
               </div>
 
@@ -380,8 +457,8 @@ export function AuthModal({
                 </label>
                 <input
                   type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
+                  value={regEmail}
+                  onChange={(e) => setRegEmail(e.target.value)}
                   placeholder="e.g. nathan@enterprise.corp"
                   className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 />
@@ -389,24 +466,48 @@ export function AuthModal({
 
               <div>
                 <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
-                  Account Type
+                  Password <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="password"
+                  value={regPassword}
+                  onChange={(e) => setRegPassword(e.target.value)}
+                  placeholder="Choose password"
+                  className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
+                  required
+                />
+              </div>
+
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                  Account Type Requested
                 </label>
                 <select
-                  value={role}
-                  onChange={(e) => setRole(e.target.value)}
+                  value={regRole}
+                  onChange={(e) => setRegRole(e.target.value)}
                   className="w-full text-xs font-semibold px-3.5 py-2.5 rounded-xl border border-slate-300 dark:border-slate-700 bg-slate-50 dark:bg-slate-950 text-slate-900 dark:text-white focus:outline-none focus:ring-2 focus:ring-sky-500"
                 >
                   <option value="student">Student / Developer Account</option>
-                  <option value="admin">Administrator (Full Access)</option>
+                  <option value="admin">SAP Enterprise Architect (Requires Approval)</option>
                 </select>
+              </div>
+
+              <div className="p-3 rounded-xl bg-slate-100 dark:bg-slate-950 border border-slate-200 dark:border-slate-800 text-[11px] text-slate-600 dark:text-slate-400 space-y-1">
+                <div className="flex items-center gap-1.5 font-semibold text-slate-800 dark:text-slate-200">
+                  <Info className="w-3.5 h-3.5 text-indigo-500" />
+                  <span>Admin Approval Policy</span>
+                </div>
+                <p>
+                  All registrations enter a pending approval state. The administrator (Aryanath) reviews and grants login access from the Admin Control Center.
+                </p>
               </div>
 
               <button
                 type="submit"
                 disabled={loading}
-                className="w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-sky-600 hover:bg-sky-700 text-white transition flex items-center justify-center gap-2 shadow-xs"
+                className="w-full py-2.5 rounded-xl text-xs sm:text-sm font-bold bg-indigo-600 hover:bg-indigo-700 text-white transition flex items-center justify-center gap-2 shadow-xs"
               >
-                <span>{loading ? 'Creating Account...' : 'Register & Log In'}</span>
+                <span>{loading ? 'Submitting Request...' : 'Submit Access Request'}</span>
                 <ArrowRight className="w-4 h-4" />
               </button>
             </form>
