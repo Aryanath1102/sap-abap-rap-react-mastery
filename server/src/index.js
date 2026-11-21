@@ -43,6 +43,10 @@ async function callGenerativeLanguageApi(model, apiKey, content) {
   } else if (cleanModel.endsWith('-it')) {
     modelsToTry.push(cleanModel.replace(/-it$/, ''));
   }
+  // Official Google AI Studio aliases
+  if (!modelsToTry.includes('gemini-flash-latest')) {
+    modelsToTry.push('gemini-flash-latest');
+  }
   if (!modelsToTry.includes('gemini-2.5-flash')) {
     modelsToTry.push('gemini-2.5-flash');
   }
@@ -67,37 +71,48 @@ async function callGenerativeLanguageApi(model, apiKey, content) {
         contents: [{ role: 'user', parts: [{ text: content }] }]
       };
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
-      const response = await fetch(url, {
+      // Match Google AI Studio Quickstart: Clean URL with X-goog-api-key header (no ?key= in query string)
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+      
+      const reqHeaders = {
+        'Content-Type': 'application/json',
+        'X-goog-api-key': apiKey
+      };
+
+      let response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: reqHeaders,
         body: JSON.stringify(payload)
       });
 
-      const data = await response.json();
+      let data = await response.json();
+
+      // If rejected with developer instruction error on non-Gemma, retry embedding instruction in contents
+      if (data.error && (data.error.message?.includes('system_instruction') || data.error.message?.includes('Developer instruction'))) {
+        const retryPayload = {
+          contents: [{
+            role: 'user',
+            parts: [{
+              text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
+            }]
+          }]
+        };
+        const retryRes = await fetch(url, {
+          method: 'POST',
+          headers: reqHeaders,
+          body: JSON.stringify(retryPayload)
+        });
+        const retryData = await retryRes.json();
+        if (retryData.candidates?.[0]?.content?.parts?.[0]?.text) {
+          return retryData.candidates[0].content.parts[0].text;
+        }
+        if (!retryData.error) {
+          data = retryData;
+        }
+      }
 
       if (data.error) {
-        // Fallback if system_instruction is not supported for this model variant
-        if (!isGemma && (data.error.message?.includes('system_instruction') || data.error.message?.includes('Developer instruction'))) {
-          const retryPayload = {
-            contents: [{
-              role: 'user',
-              parts: [{
-                text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
-              }]
-            }]
-          };
-          const retryRes = await fetch(url, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify(retryPayload)
-          });
-          const retryData = await retryRes.json();
-          if (retryData.candidates?.[0]?.content?.parts?.[0]?.text) {
-            return retryData.candidates[0].content.parts[0].text;
-          }
-        }
-        throw new Error(data.error.message || `API error ${data.error.code}`);
+        throw new Error(data.error.message || `API error (${data.error.code})`);
       }
 
       const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
@@ -107,7 +122,7 @@ async function callGenerativeLanguageApi(model, apiKey, content) {
       throw new Error('No candidate content received from model API');
     } catch (err) {
       lastError = err;
-      if (err.message && (err.message.includes('not found') || err.message.includes('404') || err.message.includes('is not supported'))) {
+      if (err.message && (err.message.includes('not found') || err.message.includes('404') || err.message.includes('is not supported') || err.message.includes('not supported for this API version'))) {
         continue;
       }
       throw err;

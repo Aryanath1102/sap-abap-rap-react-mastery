@@ -62,11 +62,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
     setApiKey(trimmed);
     localStorage.setItem('sap_mentor_gemini_key', trimmed);
     if (trimmed) {
-      if (!trimmed.startsWith('AIzaSy')) {
-        onShowToast?.('⚠️ Google AI Studio API keys start with "AIzaSy". Keys starting with "AQ." are OAuth codes.', 'error');
-      } else {
-        onShowToast?.('Gemma / Gemini API key saved for live proxy.');
-      }
+      onShowToast?.('Gemma / Gemini API key saved for live proxy.');
     } else {
       onShowToast?.('API key cleared. Using server default key / Clean Core engine.');
     }
