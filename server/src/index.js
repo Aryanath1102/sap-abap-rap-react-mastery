@@ -18,14 +18,104 @@ import {
   getMentorMessages,
   addMentorMessage,
   clearMentorMessages,
+  checkAndIncrementApiUsage,
+  getApiUsage,
   exportAllData
 } from './db.js';
 import { validateAssignment, analyzeMentorPrompt } from './cleanCoreValidator.js';
 
-dotenv.config();
-
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
+
+// Load environment variables from server/.env or root .env
+dotenv.config({ path: path.resolve(__dirname, '../.env') });
+dotenv.config({ path: path.resolve(__dirname, '../../.env') });
+dotenv.config();
+
+// Helper to call Generative Language API (Gemma / Gemini) with resilience and system instructions
+async function callGenerativeLanguageApi(model, apiKey, content) {
+  const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
+
+  let cleanModel = model.replace(/^models\//, '');
+  const modelsToTry = [cleanModel];
+  if (!cleanModel.endsWith('-it') && !cleanModel.includes('flash') && !cleanModel.includes('pro')) {
+    modelsToTry.push(`${cleanModel}-it`);
+  } else if (cleanModel.endsWith('-it')) {
+    modelsToTry.push(cleanModel.replace(/-it$/, ''));
+  }
+  if (!modelsToTry.includes('gemini-2.5-flash')) {
+    modelsToTry.push('gemini-2.5-flash');
+  }
+
+  let lastError = null;
+
+  for (const m of modelsToTry) {
+    try {
+      const isGemma = m.toLowerCase().includes('gemma');
+      // Gemma models on v1beta often require system instructions inside contents
+      const payload = isGemma ? {
+        contents: [{
+          role: 'user',
+          parts: [{
+            text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
+          }]
+        }]
+      } : {
+        system_instruction: {
+          parts: [{ text: systemInstruction }]
+        },
+        contents: [{ role: 'user', parts: [{ text: content }] }]
+      };
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+
+      if (data.error) {
+        // Fallback if system_instruction is not supported for this model variant
+        if (!isGemma && (data.error.message?.includes('system_instruction') || data.error.message?.includes('Developer instruction'))) {
+          const retryPayload = {
+            contents: [{
+              role: 'user',
+              parts: [{
+                text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
+              }]
+            }]
+          };
+          const retryRes = await fetch(url, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(retryPayload)
+          });
+          const retryData = await retryRes.json();
+          if (retryData.candidates?.[0]?.content?.parts?.[0]?.text) {
+            return retryData.candidates[0].content.parts[0].text;
+          }
+        }
+        throw new Error(data.error.message || `API error ${data.error.code}`);
+      }
+
+      const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
+      if (text) {
+        return text;
+      }
+      throw new Error('No candidate content received from model API');
+    } catch (err) {
+      lastError = err;
+      if (err.message && (err.message.includes('not found') || err.message.includes('404') || err.message.includes('is not supported'))) {
+        continue;
+      }
+      throw err;
+    }
+  }
+
+  throw lastError || new Error('All model attempts failed');
+}
 
 const app = express();
 const PORT = process.env.PORT || 5000;
@@ -160,30 +250,22 @@ app.post('/api/mentor/chat', async (req, res) => {
     let botResponse = '';
     const geminiKey = apiKey || process.env.GEMINI_API_KEY;
 
-    // 2. If Gemini API key is provided, proxy to Gemini API with strict SAP Architect system instructions
+    // 2. If API key is provided, proxy with daily rate limiting (5,000/day) and Gemma 4 31B
     if (geminiKey) {
-      try {
-        const response = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${encodeURIComponent(geminiKey)}`, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: {
-              parts: [{
-                text: 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).'
-              }]
-            },
-            contents: [{ role: 'user', parts: [{ text: content }] }]
-          })
-        });
+      const dailyLimit = parseInt(process.env.DAILY_RATE_LIMIT || '5000', 10);
+      const usage = checkAndIncrementApiUsage(dailyLimit);
 
-        const geminiData = await response.json();
-        botResponse = geminiData.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (!botResponse) {
-          throw new Error('No candidate content received from Gemini API');
+      if (!usage.allowed) {
+        console.warn(`Daily API rate limit of ${dailyLimit} requests reached (${usage.count}/${dailyLimit}).`);
+        botResponse = `*Notice: Daily API rate limit (${dailyLimit} requests/day) reached. Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
+      } else {
+        try {
+          const modelName = process.env.GEMINI_MODEL || 'gemma-4-31b';
+          botResponse = await callGenerativeLanguageApi(modelName, geminiKey, content);
+        } catch (apiError) {
+          console.warn('AI proxy error, falling back to built-in Clean Core analyzer:', apiError.message);
+          botResponse = `*Notice: Live Model API proxy (${process.env.GEMINI_MODEL || 'gemma-4-31b'}) failed (${apiError.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
         }
-      } catch (geminiError) {
-        console.warn('Gemini proxy error, falling back to built-in Clean Core analyzer:', geminiError.message);
-        botResponse = `*Notice: Live Gemini API proxy failed (${geminiError.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
       }
     } else {
       // Use built-in Clean Core & RAP static code analyzer
@@ -193,6 +275,23 @@ app.post('/api/mentor/chat', async (req, res) => {
     // 3. Record bot message
     const updatedMessages = addMentorMessage({ role: 'assistant', content: botResponse });
     res.json(updatedMessages);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// Usage endpoint for rate limiting status
+app.get('/api/mentor/usage', (req, res) => {
+  try {
+    const dailyLimit = parseInt(process.env.DAILY_RATE_LIMIT || '5000', 10);
+    const usage = getApiUsage();
+    res.json({
+      date: usage.date,
+      count: usage.count,
+      limit: dailyLimit,
+      remaining: Math.max(0, dailyLimit - usage.count),
+      model: process.env.GEMINI_MODEL || 'gemma-4-31b'
+    });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

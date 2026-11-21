@@ -16,8 +16,8 @@
     "postcss": "^8.4.49",
     "react": "^18.3.1",
     "react-dom": "^18.3.1",
+    "sap-modern-abap-rap-react-mastery-studio": "file:..",
     "tailwindcss": "^3.4.17",
     "vite": "^6.0.7"
-  },
-  "devDependencies": {}
+  }
 }

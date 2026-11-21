@@ -325,3 +325,44 @@ export function exportAllData() {
     mentorMessages: getMentorMessages()
   };
 }
+
+// Track and enforce daily rate limits for AI calls
+export function checkAndIncrementApiUsage(dailyLimit = 5000) {
+  if (!db) return { allowed: true, count: 0, limit: dailyLimit, remaining: dailyLimit };
+  const today = new Date().toISOString().slice(0, 10); // YYYY-MM-DD
+
+  // Ensure table exists
+  db.run(`
+    CREATE TABLE IF NOT EXISTS api_usage (
+      date TEXT PRIMARY KEY,
+      request_count INTEGER DEFAULT 0
+    );
+  `);
+
+  const row = getOne('SELECT request_count FROM api_usage WHERE date = ?', [today]);
+  const currentCount = row ? Number(row.request_count) : 0;
+
+  if (currentCount >= dailyLimit) {
+    return { allowed: false, count: currentCount, limit: dailyLimit, remaining: 0 };
+  }
+
+  const newCount = currentCount + 1;
+  if (row) {
+    runSql('UPDATE api_usage SET request_count = ? WHERE date = ?', [newCount, today]);
+  } else {
+    runSql('INSERT INTO api_usage (date, request_count) VALUES (?, ?)', [today, newCount]);
+  }
+
+  return { allowed: true, count: newCount, limit: dailyLimit, remaining: dailyLimit - newCount };
+}
+
+export function getApiUsage() {
+  const today = new Date().toISOString().slice(0, 10);
+  if (!db) return { count: 0, date: today };
+  try {
+    const row = getOne('SELECT request_count FROM api_usage WHERE date = ?', [today]);
+    return { count: row ? Number(row.request_count) : 0, date: today };
+  } catch {
+    return { count: 0, date: today };
+  }
+}
