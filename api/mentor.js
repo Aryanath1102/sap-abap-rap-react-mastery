@@ -48,12 +48,11 @@ export default async function handler(req, res) {
             contents: [{ role: 'user', parts: [{ text: content }] }]
           };
 
-          const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+          const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`;
           const response = await fetch(url, {
             method: 'POST',
             headers: {
-              'Content-Type': 'application/json',
-              'X-goog-api-key': key
+              'Content-Type': 'application/json'
             },
             body: JSON.stringify(payload)
           });

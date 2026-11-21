@@ -173,13 +173,11 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
         contents: [{ role: 'user', parts: [{ text: content }] }]
       };
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+      // Use ?key= query parameter for browser requests (avoids CORS preflight from custom headers)
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'X-goog-api-key': apiKey
-        },
+        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload)
       });
 
@@ -190,6 +188,8 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
       }
       if (data.error) {
         lastErr = new Error(data.error.message || `API Error ${data.error.code}`);
+        // If model not found, try next model
+        if (data.error.code === 404 || data.error.message?.includes('not found')) continue;
       }
     } catch (e) {
       lastErr = e;
@@ -206,12 +206,13 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
 export async function sendMentorMessage(content, apiKey = '') {
   const effectiveKey = (apiKey && apiKey.trim()) || localStorage.getItem('sap_mentor_gemini_key') || '';
 
+  // Strategy 1: Try the Vercel serverless proxy with a generous 30s timeout for AI response
   try {
     const res = await fetchWithTimeout(`${API_BASE}/mentor/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, apiKey: effectiveKey })
-    });
+    }, 30000);  // 30 seconds for AI calls
     if (res.ok) {
       const data = await res.json();
       if (Array.isArray(data)) return data;
@@ -221,21 +222,21 @@ export async function sendMentorMessage(content, apiKey = '') {
       if (data?.messages) return data.messages;
     }
   } catch (err) {
-    console.warn('Backend proxy unavailable, checking client AI fallback:', err.message);
+    console.warn('Backend proxy unavailable:', err.message);
   }
 
-  // Fallback: If API key is available, call Google Gemini / Gemma directly from browser!
+  // Strategy 2: Call Google Generative Language API directly from browser
   if (effectiveKey) {
     try {
       return await callGoogleGenerativeApiDirect(content, effectiveKey);
     } catch (apiErr) {
       console.warn('Direct Google AI call failed:', apiErr.message);
-      const notice = `*Notice: Live Model API proxy failed (${apiErr.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
+      const notice = `*Notice: Live AI Model proxy failed (${apiErr.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
       return addLocalMentorExchange(content, notice);
     }
   }
 
-  // Fallback to offline static Clean Core analyzer
+  // Strategy 3: Offline static Clean Core analyzer
   const localRes = sendLocalMentorChat(content);
   return Array.isArray(localRes) ? localRes : (localRes.messages || []);
 }
