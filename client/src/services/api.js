@@ -154,30 +154,30 @@ export async function fetchMentorMessages() {
 }
 
 export async function callGoogleGenerativeApiDirect(content, apiKey) {
+  const key = apiKey || localStorage.getItem('sap_mentor_gemini_key') || '';
   const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-  const models = ['gemini-flash-latest', 'gemma-4-31b', 'gemini-2.5-flash'];
+  // Strictly use Gemma 4 31B only
+  const models = ['gemma-4-31b-it', 'gemma-4-31b'];
   let botText = '';
   let lastErr = null;
 
   for (const m of models) {
     try {
-      const isGemma = m.toLowerCase().includes('gemma');
-      const payload = isGemma ? {
+      const payload = {
         contents: [{
           role: 'user',
           parts: [{ text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}` }]
         }]
-      } : {
-        system_instruction: { parts: [{ text: systemInstruction }] },
-        contents: [{ role: 'user', parts: [{ text: content }] }]
       };
 
-      // Use ?key= query parameter for browser requests (avoids CORS preflight from custom headers)
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`;
       const response = await fetch(url, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': key
+        },
         body: JSON.stringify(payload)
       });
 
@@ -188,7 +188,6 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
       }
       if (data.error) {
         lastErr = new Error(data.error.message || `API Error ${data.error.code}`);
-        // If model not found, try next model
         if (data.error.code === 404 || data.error.message?.includes('not found')) continue;
       }
     } catch (e) {
@@ -197,7 +196,7 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
   }
 
   if (!botText) {
-    throw lastErr || new Error('No candidate content received from Gemini API');
+    throw lastErr || new Error('No candidate content received from Gemma 4 31B');
   }
 
   return addLocalMentorExchange(content, botText);

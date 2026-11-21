@@ -32,47 +32,27 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
-// Helper to call Generative Language API (Gemma / Gemini) with resilience and system instructions
+// Helper to call Generative Language API strictly with Gemma 4 31B
 async function callGenerativeLanguageApi(model, apiKey, content) {
   const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-  let cleanModel = model.replace(/^models\//, '');
-  const modelsToTry = [cleanModel];
-  if (!cleanModel.endsWith('-it') && !cleanModel.includes('flash') && !cleanModel.includes('pro')) {
-    modelsToTry.push(`${cleanModel}-it`);
-  } else if (cleanModel.endsWith('-it')) {
-    modelsToTry.push(cleanModel.replace(/-it$/, ''));
-  }
-  // Official Google AI Studio aliases
-  if (!modelsToTry.includes('gemini-flash-latest')) {
-    modelsToTry.push('gemini-flash-latest');
-  }
-  if (!modelsToTry.includes('gemini-2.5-flash')) {
-    modelsToTry.push('gemini-2.5-flash');
-  }
-
+  // Strictly use Gemma 4 31B only
+  const modelsToTry = ['gemma-4-31b-it', 'gemma-4-31b'];
   let lastError = null;
 
   for (const m of modelsToTry) {
     try {
-      const isGemma = m.toLowerCase().includes('gemma');
-      // Gemma models on v1beta often require system instructions inside contents
-      const payload = isGemma ? {
+      // Gemma models require instruction formatted inside contents
+      const payload = {
         contents: [{
           role: 'user',
           parts: [{
             text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
           }]
         }]
-      } : {
-        system_instruction: {
-          parts: [{ text: systemInstruction }]
-        },
-        contents: [{ role: 'user', parts: [{ text: content }] }]
       };
 
-      // Match Google AI Studio Quickstart: Clean URL with X-goog-api-key header (no ?key= in query string)
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
       
       const reqHeaders = {
         'Content-Type': 'application/json',
@@ -87,30 +67,6 @@ async function callGenerativeLanguageApi(model, apiKey, content) {
 
       let data = await response.json();
 
-      // If rejected with developer instruction error on non-Gemma, retry embedding instruction in contents
-      if (data.error && (data.error.message?.includes('system_instruction') || data.error.message?.includes('Developer instruction'))) {
-        const retryPayload = {
-          contents: [{
-            role: 'user',
-            parts: [{
-              text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
-            }]
-          }]
-        };
-        const retryRes = await fetch(url, {
-          method: 'POST',
-          headers: reqHeaders,
-          body: JSON.stringify(retryPayload)
-        });
-        const retryData = await retryRes.json();
-        if (retryData.candidates?.[0]?.content?.parts?.[0]?.text) {
-          return retryData.candidates[0].content.parts[0].text;
-        }
-        if (!retryData.error) {
-          data = retryData;
-        }
-      }
-
       if (data.error) {
         throw new Error(data.error.message || `API error (${data.error.code})`);
       }
@@ -122,7 +78,7 @@ async function callGenerativeLanguageApi(model, apiKey, content) {
       throw new Error('No candidate content received from model API');
     } catch (err) {
       lastError = err;
-      if (err.message && (err.message.includes('not found') || err.message.includes('404') || err.message.includes('is not supported') || err.message.includes('not supported for this API version'))) {
+      if (err.message && (err.message.includes('not found') || err.message.includes('404') || err.message.includes('is not supported'))) {
         continue;
       }
       throw err;
@@ -265,7 +221,7 @@ app.post('/api/mentor/chat', async (req, res) => {
     let botResponse = '';
     const geminiKey = apiKey || process.env.GEMINI_API_KEY;
 
-    // 2. If API key is provided, proxy with daily rate limiting (5,000/day) and Gemma 4 31B
+    // 2. Proxy strictly to Gemma 4 31B with daily rate limiting (5,000/day)
     if (geminiKey) {
       const dailyLimit = parseInt(process.env.DAILY_RATE_LIMIT || '5000', 10);
       const usage = checkAndIncrementApiUsage(dailyLimit);
@@ -275,11 +231,11 @@ app.post('/api/mentor/chat', async (req, res) => {
         botResponse = `*Notice: Daily API rate limit (${dailyLimit} requests/day) reached. Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
       } else {
         try {
-          const modelName = process.env.GEMINI_MODEL || 'gemma-4-31b';
+          const modelName = 'gemma-4-31b-it';
           botResponse = await callGenerativeLanguageApi(modelName, geminiKey, content);
         } catch (apiError) {
           console.warn('AI proxy error, falling back to built-in Clean Core analyzer:', apiError.message);
-          botResponse = `*Notice: Live Model API proxy (${process.env.GEMINI_MODEL || 'gemma-4-31b'}) failed (${apiError.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
+          botResponse = `*Notice: Live Model API proxy (gemma-4-31b) failed (${apiError.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
         }
       }
     } else {
