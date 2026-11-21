@@ -15,6 +15,7 @@ import {
   getLocalQuizHistory,
   getLocalMentorMessages,
   sendLocalMentorChat,
+  addLocalMentorExchange,
   clearLocalMentorMessages,
   generateLocalExportUrl,
   getAllUsers,
@@ -34,6 +35,8 @@ import {
   setBroadcastAnnouncement,
   getVercelDbDiagnostics
 } from './localDatabase';
+
+import { analyzeMentorPrompt } from './cleanCoreValidator';
 
 const API_BASE = '/api';
 
@@ -150,20 +153,89 @@ export async function fetchMentorMessages() {
   return getLocalMentorMessages();
 }
 
+export async function callGoogleGenerativeApiDirect(content, apiKey) {
+  const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
+
+  const models = ['gemini-flash-latest', 'gemma-4-31b', 'gemini-2.5-flash'];
+  let botText = '';
+  let lastErr = null;
+
+  for (const m of models) {
+    try {
+      const isGemma = m.toLowerCase().includes('gemma');
+      const payload = isGemma ? {
+        contents: [{
+          role: 'user',
+          parts: [{ text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}` }]
+        }]
+      } : {
+        system_instruction: { parts: [{ text: systemInstruction }] },
+        contents: [{ role: 'user', parts: [{ text: content }] }]
+      };
+
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
+      const response = await fetch(url, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-goog-api-key': apiKey
+        },
+        body: JSON.stringify(payload)
+      });
+
+      const data = await response.json();
+      if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+        botText = data.candidates[0].content.parts[0].text;
+        break;
+      }
+      if (data.error) {
+        lastErr = new Error(data.error.message || `API Error ${data.error.code}`);
+      }
+    } catch (e) {
+      lastErr = e;
+    }
+  }
+
+  if (!botText) {
+    throw lastErr || new Error('No candidate content received from Gemini API');
+  }
+
+  return addLocalMentorExchange(content, botText);
+}
+
 export async function sendMentorMessage(content, apiKey = '') {
+  const effectiveKey = (apiKey && apiKey.trim()) || localStorage.getItem('sap_mentor_gemini_key') || '';
+
   try {
     const res = await fetchWithTimeout(`${API_BASE}/mentor/chat`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ content, apiKey })
+      body: JSON.stringify({ content, apiKey: effectiveKey })
     });
     if (res.ok) {
       const data = await res.json();
-      return Array.isArray(data) ? data : (data.messages || []);
+      if (Array.isArray(data)) return data;
+      if (data?.response) {
+        return addLocalMentorExchange(content, data.response);
+      }
+      if (data?.messages) return data.messages;
     }
-  } catch {
-    // Fallback to local
+  } catch (err) {
+    console.warn('Backend proxy unavailable, checking client AI fallback:', err.message);
   }
+
+  // Fallback: If API key is available, call Google Gemini / Gemma directly from browser!
+  if (effectiveKey) {
+    try {
+      return await callGoogleGenerativeApiDirect(content, effectiveKey);
+    } catch (apiErr) {
+      console.warn('Direct Google AI call failed:', apiErr.message);
+      const notice = `*Notice: Live Model API proxy failed (${apiErr.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
+      return addLocalMentorExchange(content, notice);
+    }
+  }
+
+  // Fallback to offline static Clean Core analyzer
   const localRes = sendLocalMentorChat(content);
   return Array.isArray(localRes) ? localRes : (localRes.messages || []);
 }

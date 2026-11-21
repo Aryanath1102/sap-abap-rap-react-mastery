@@ -227,6 +227,25 @@ export function sendLocalMentorChat(userPrompt) {
   return updated;
 }
 
+export function addLocalMentorExchange(userPrompt, botResponse) {
+  const current = getLocalMentorMessages();
+  const userMsg = {
+    id: Date.now(),
+    role: 'user',
+    content: userPrompt,
+    created_at: new Date().toISOString()
+  };
+  const botMsg = {
+    id: Date.now() + 1,
+    role: 'assistant',
+    content: botResponse,
+    created_at: new Date().toISOString()
+  };
+  const updated = [...current, userMsg, botMsg];
+  writeJson(KEYS.MENTOR, updated);
+  return updated;
+}
+
 export function clearLocalMentorMessages() {
   writeJson(KEYS.MENTOR, []);
   return [];
