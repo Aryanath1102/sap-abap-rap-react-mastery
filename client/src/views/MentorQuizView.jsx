@@ -50,17 +50,26 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
   async function loadChatMessages() {
     try {
       const msgs = await fetchMentorMessages();
-      setMessages(msgs);
+      setMessages(Array.isArray(msgs) ? msgs : []);
     } catch (err) {
       console.warn('Failed to fetch mentor messages:', err.message);
+      setMessages([]);
     }
   }
 
   const handleSaveApiKey = (key) => {
-    setApiKey(key);
-    localStorage.setItem('sap_mentor_gemini_key', key);
-    if (key) onShowToast?.('Gemini API key saved for live proxy.');
-    else onShowToast?.('Gemini API key cleared. Using built-in Clean Core engine.');
+    const trimmed = key.trim();
+    setApiKey(trimmed);
+    localStorage.setItem('sap_mentor_gemini_key', trimmed);
+    if (trimmed) {
+      if (!trimmed.startsWith('AIzaSy')) {
+        onShowToast?.('⚠️ Google AI Studio API keys start with "AIzaSy". Keys starting with "AQ." are OAuth codes.', 'error');
+      } else {
+        onShowToast?.('Gemma / Gemini API key saved for live proxy.');
+      }
+    } else {
+      onShowToast?.('API key cleared. Using server default key / Clean Core engine.');
+    }
   };
 
   const handleSendMessage = async (e) => {
@@ -71,12 +80,13 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
     setInputVal('');
 
     // Optimistically show user message
-    setMessages(prev => [...prev, { id: Date.now(), role: 'user', content: userText, created_at: new Date().toISOString() }]);
+    setMessages(prev => [...(Array.isArray(prev) ? prev : []), { id: Date.now(), role: 'user', content: userText, created_at: new Date().toISOString() }]);
 
     try {
       setChatLoading(true);
       const updatedMessages = await sendMentorMessage(userText, apiKey);
-      setMessages(updatedMessages);
+      const safeList = Array.isArray(updatedMessages) ? updatedMessages : (updatedMessages?.messages || []);
+      setMessages(safeList);
     } catch (err) {
       onShowToast?.(`Mentor error: ${err.message}`, 'error');
     } finally {
@@ -185,8 +195,9 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
 
         {/* Chat Messages Log */}
         <div ref={chatScrollRef} className="flex-1 overflow-y-auto p-4 space-y-3.5 thin-scroll bg-slate-50/30 dark:bg-slate-950/30">
-          {messages.map((msg, idx) => {
+          {(Array.isArray(messages) ? messages : []).map((msg, idx) => {
             const isUser = msg.role === 'user';
+            const displayContent = typeof msg.content === 'string' ? msg.content : JSON.stringify(msg.content);
             return (
               <div
                 key={msg.id || idx}
@@ -205,7 +216,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
                       : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-xs border border-slate-200 dark:border-slate-700/80 shadow-xs'
                   }`}
                 >
-                  {msg.content}
+                  {displayContent}
                 </div>
 
                 {isUser && (

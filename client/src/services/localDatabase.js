@@ -224,7 +224,7 @@ export function sendLocalMentorChat(userPrompt) {
 
   const updated = [...current, userMsg, botMsg];
   writeJson(KEYS.MENTOR, updated);
-  return { response: responseContent, messages: updated };
+  return updated;
 }
 
 export function clearLocalMentorMessages() {

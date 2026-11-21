@@ -157,11 +157,15 @@ export async function sendMentorMessage(content, apiKey = '') {
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({ content, apiKey })
     });
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      const data = await res.json();
+      return Array.isArray(data) ? data : (data.messages || []);
+    }
   } catch {
     // Fallback to local
   }
-  return sendLocalMentorChat(content);
+  const localRes = sendLocalMentorChat(content);
+  return Array.isArray(localRes) ? localRes : (localRes.messages || []);
 }
 
 export async function clearMentorChat() {
