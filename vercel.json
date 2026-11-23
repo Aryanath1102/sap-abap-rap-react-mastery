@@ -1,20 +1,12 @@
 {
-  "installCommand": "npm install --prefix client --include=dev",
+  "installCommand": "npm install --include=dev",
   "buildCommand": "npm run build --prefix client",
   "outputDirectory": "client/dist",
   "framework": "vite",
   "rewrites": [
     {
-      "source": "/api/db-status",
-      "destination": "/api/db-status.js"
-    },
-    {
-      "source": "/api/auth/:match*",
-      "destination": "/api/auth.js"
-    },
-    {
-      "source": "/api/mentor/:match*",
-      "destination": "/api/mentor.js"
+      "source": "/api/:path*",
+      "destination": "/api/index"
     },
     {
       "source": "/((?!api/).*)",

@@ -9,10 +9,9 @@
     "test": "node --test test/*.test.js"
   },
   "dependencies": {
-    "cors": "^2.8.5",
     "dotenv": "^16.4.7",
-    "express": "^4.21.2",
-    "sap-modern-abap-rap-react-mastery-studio": "file:..",
-    "sql.js": "^1.17.0"
+    "express": "^5.1.0",
+    "pg": "^8.16.3",
+    "sap-modern-abap-rap-react-mastery-studio": "file:.."
   }
 }

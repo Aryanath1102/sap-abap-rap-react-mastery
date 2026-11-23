@@ -36,7 +36,7 @@ import {
 import { LESSONS } from '../data/lessons';
 import { isDayUnlocked } from '../App';
 import { CodeBlock } from '../components/CodeBlock';
-import { submitAssignment, fetchSubmissions } from '../services/api';
+import { submitAssignment, fetchSubmissions, fetchProgress } from '../services/api';
 
 export function LessonsView({
   activeLessonId,
@@ -67,13 +67,8 @@ export function LessonsView({
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [viewTab, setViewTab] = useState('all'); // 'all', 'narrative', 'keywords', 'showdown', 'code', 'lab'
   const [copiedIndices, setCopiedIndices] = useState({});
-  const [solvedExerciseIds, setSolvedExerciseIds] = useState(() => {
-    try {
-      return JSON.parse(localStorage.getItem('sap_solved_exercises_list') || '[]');
-    } catch {
-      return [];
-    }
-  });
+  const [solvedExerciseIds, setSolvedExerciseIds] = useState([]);
+  useEffect(() => { fetchProgress().then(p => setSolvedExerciseIds(p.solved_assignment_ids || [])).catch(() => {}); }, []);
 
   // When active lesson changes, reset editor code and fetch past submissions
   useEffect(() => {
@@ -126,7 +121,7 @@ export function LessonsView({
 
     try {
       setSubmitting(true);
-      const res = await submitAssignment(currentLesson.id, userCode);
+      const res = await submitAssignment(currentLesson.id, userCode, currentAssignment.id);
       setValidationResult(res.validation);
       setSubmissionsHistory(res.history || []);
 
@@ -135,9 +130,7 @@ export function LessonsView({
         if (!solvedExerciseIds.includes(solvedKey)) {
           const nextSolved = [...solvedExerciseIds, solvedKey];
           setSolvedExerciseIds(nextSolved);
-          try {
-            localStorage.setItem('sap_solved_exercises_list', JSON.stringify(nextSolved));
-          } catch {}
+
         }
 
         onRefreshProgress?.();
@@ -1306,12 +1299,12 @@ export function LessonsView({
             </div>
           )}
 
-          {/* SQLite Submission History */}
+          {/* cloud Submission History */}
           {submissionsHistory.length > 0 && (
             <div className="pt-4 border-t border-slate-100 dark:border-slate-800 space-y-2.5">
               <div className="flex items-center gap-2 text-xs font-bold text-slate-500">
                 <History className="w-4 h-4" />
-                <span>SQLite Submission History for Chapter {currentLesson.day} ({submissionsHistory.length} attempts)</span>
+                <span>cloud Submission History for Chapter {currentLesson.day} ({submissionsHistory.length} attempts)</span>
               </div>
               <div className="space-y-2 max-h-48 overflow-y-auto thin-scroll">
                 {submissionsHistory.map((sub) => (

@@ -52,7 +52,7 @@ export function App() {
   const [broadcast, setBroadcast] = useState(null);
   const [broadcastDismissed, setBroadcastDismissed] = useState(false);
 
-  // App state loaded from SQLite - default streak is 0 until user earns it
+  // App state loaded from cloud - default streak is 0 until user earns it
   const [progress, setProgress] = useState({
     completed_days: [],
     solved_exercises: [],

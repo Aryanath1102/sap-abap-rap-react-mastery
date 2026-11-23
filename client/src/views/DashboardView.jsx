@@ -165,10 +165,10 @@ export function DashboardView({ progress, onResetProgress, onNavigate, onShowToa
         <div className="space-y-1">
           <div className="font-bold flex items-center gap-1.5">
             <ShieldCheck className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-            <span>SQLite Persistent Storage Active</span>
+            <span>cloud Persistent Storage Active</span>
           </div>
           <p className="text-slate-600 dark:text-slate-400 text-[11px] max-w-2xl">
-            All your 14-day milestones, solved exercises, 20-step project checklists, assessment scores, and AI mentor conversations are securely saved into your local <code className="bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded font-mono">database.sqlite</code> database.
+            All your 14-day milestones, solved exercises, 20-step project checklists, assessment scores, and AI mentor conversations are securely saved into your cloud <code className="bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded font-mono">PostgreSQL</code> database.
           </p>
         </div>
 
@@ -187,7 +187,7 @@ export function DashboardView({ progress, onResetProgress, onNavigate, onShowToa
       <ConfirmModal
         isOpen={showResetModal}
         title="Reset All Learning Progress?"
-        message="This will reset your completed roadmap days, solved exercise submissions, project checklists, and quiz history in the SQLite database. This action cannot be undone."
+        message="This will reset your completed roadmap days, solved exercise submissions, project checklists, and quiz history in the cloud database. This action cannot be undone."
         confirmText="Yes, Reset All"
         onConfirm={() => {
           setShowResetModal(false);

@@ -25,7 +25,6 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
   // Chat State
   const [messages, setMessages] = useState([]);
   const [inputVal, setInputVal] = useState('');
-  const [apiKey, setApiKey] = useState(() => localStorage.getItem('sap_mentor_gemini_key') || '');
   const [chatLoading, setChatLoading] = useState(false);
   const chatScrollRef = useRef(null);
 
@@ -57,17 +56,6 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
     }
   }
 
-  const handleSaveApiKey = (key) => {
-    const trimmed = key.trim();
-    setApiKey(trimmed);
-    localStorage.setItem('sap_mentor_gemini_key', trimmed);
-    if (trimmed) {
-      onShowToast?.('Gemma / Gemini API key saved for live proxy.');
-    } else {
-      onShowToast?.('API key cleared. Using server default key / Clean Core engine.');
-    }
-  };
-
   const handleSendMessage = async (e) => {
     e.preventDefault();
     if (!inputVal.trim() || chatLoading) return;
@@ -80,7 +68,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
 
     try {
       setChatLoading(true);
-      const updatedMessages = await sendMentorMessage(userText, apiKey);
+      const updatedMessages = await sendMentorMessage(userText);
       const safeList = Array.isArray(updatedMessages) ? updatedMessages : (updatedMessages?.messages || []);
       setMessages(safeList);
     } catch (err) {
@@ -122,7 +110,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
       } else {
         // Quiz complete!
         setIsQuizFinished(true);
-        // Record to SQLite
+        // Record to cloud
         recordQuizAttempt(newScore, QUIZ_DATA.length, userAnswers)
           .then(res => {
             onQuizUpdated?.(newScore);
@@ -166,23 +154,10 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
           </div>
 
           <div className="flex items-center gap-2">
-            {/* Optional Gemini API Key input */}
-            <div className="relative">
-              <Key className="w-3.5 h-3.5 text-slate-400 absolute left-2.5 top-2" />
-              <input
-                type="password"
-                value={apiKey}
-                onChange={(e) => handleSaveApiKey(e.target.value)}
-                placeholder="Gemma / Gemini Key..."
-                className="text-xs pl-8 pr-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 w-36 sm:w-48 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
-                title="If empty, automatically uses your configured Gemma 4 26B server key (with 5,000/day limit) or built-in SAP Architect engine."
-              />
-            </div>
-
             <button
               onClick={handleClearChat}
               className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-500 hover:text-red-500 transition"
-              title="Clear SQLite Chat History"
+              title="Clear cloud Chat History"
             >
               <Trash2 className="w-4 h-4" />
             </button>
@@ -351,7 +326,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
                   {quizScore} <span className="text-sm font-normal text-slate-400">/ {QUIZ_DATA.length}</span>
                 </div>
                 <p className="text-xs text-slate-500 mt-1">
-                  Your attempt has been saved to the SQLite database.
+                  Your attempt has been saved to the cloud database.
                 </p>
               </div>
             </div>

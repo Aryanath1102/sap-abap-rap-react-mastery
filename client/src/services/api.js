@@ -9,7 +9,7 @@ export const updateProgress = data => request('/progress','PUT',data);
 export const resetProgress = () => request('/progress/reset','POST',{});
 export const fetchProjectChecklists = () => request('/projects');
 export const updateProjectStep = (id,stepIndex,completed) => request(`/projects/${encodeURIComponent(id)}/steps`,'PUT',{stepIndex,completed});
-export const submitAssignment = (lessonId,userCode) => request('/assignments/submit','POST',{lessonId,userCode});
+export const submitAssignment = (lessonId,userCode,assignmentId) => request('/assignments/submit','POST',{lessonId,userCode,assignmentId});
 export const fetchSubmissions = id => request(`/assignments/${encodeURIComponent(id)}`);
 export const fetchMentorMessages = () => request('/mentor/messages');
 export const sendMentorMessage = content => request('/mentor/chat','POST',{content});

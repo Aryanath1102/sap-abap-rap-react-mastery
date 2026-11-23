@@ -551,16 +551,11 @@ export function AdminView({ currentSession, onShowToast, onSessionChange }) {
               <span>Vercel Database Integration (Vercel Postgres / Storage Architecture)</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
-              This application features a <strong>Zero-Config Hybrid Dual-Engine</strong>:
+              Users, sessions, approvals, progress, assignments, quizzes, mentor conversations, and announcements are stored in the connected PostgreSQL database.
             </p>
-            <ul className="text-xs text-slate-600 dark:text-slate-400 space-y-1.5 pl-4 list-disc">
-              <li>
-                <strong>Cloud Production (Vercel Postgres):</strong> When you create a Postgres database in the Vercel dashboard and attach it to this project, Vercel injects the <code>POSTGRES_URL</code> environment variable. The serverless functions automatically connect and migrate the live database.
-              </li>
-              <li>
-                <strong>Serverless &amp; Local Resilience (In-Browser SQLite / Storage Engine):</strong> When running in preview or local mode without live credentials, the app seamlessly runs on a full in-browser reactive database engine so that users can complete lessons, submit code, and log in concurrently without crashing.
-              </li>
-            </ul>
+            <p className="text-xs text-slate-600 dark:text-slate-400">
+              Database availability is required for sign-in and saved work. Browser storage is not used as a database fallback.
+            </p>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -570,7 +565,7 @@ export function AdminView({ currentSession, onShowToast, onSessionChange }) {
               </span>
               <div className="text-sm font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
                 <CheckCircle2 className="w-4 h-4" />
-                <span>Healthy (Active)</span>
+                <span>{dbDiag?.connected ? 'Connected' : 'Unavailable'}</span>
               </div>
             </div>
 

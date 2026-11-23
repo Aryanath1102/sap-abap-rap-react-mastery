@@ -1,3 +1,19 @@
+> **Current deployment:** Vercel frontend + Vercel API function + connected PostgreSQL. All application records now use PostgreSQL. Earlier references below to SQLite/browser fallback describe the original prototype, not the current runtime.
+
+## Vercel database setup
+
+1. Attach a PostgreSQL integration (for example Neon) to this Vercel project. Set its pooled connection string as `POSTGRES_URL` or `DATABASE_URL` in the deployment environment. Do not prefix database secrets with `VITE_`.
+2. Set `ADMIN_USERNAME`, `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` of at least 12 characters for first deployment. Remove `ADMIN_PASSWORD` after the first administrator is created. There are no default passwords.
+3. Set `APP_ORIGIN` to the exact public origin, for example `https://your-project.vercel.app`. Set it separately for preview deployments if browser access is needed. Set `GEMINI_API_KEY` for live mentor responses.
+4. Deploy with the repository's `vercel.json`: install root dependencies, build the Vite client, route `/api/*` through `api/index.js`.
+5. Sign in, then use Admin > Approvals to approve pending users and explicitly select student or administrator access. Admin > Vercel Database checks a real database query.
+
+Schema creation is idempotent and serialized across cold starts. Users, password hashes, approvals, sessions, user-scoped progress/checklists/submissions/quizzes/chat history, announcements, AI usage and login rate limits all live in PostgreSQL. Learning records are grouped per user in the `user_data` table; row-locked transactions prevent simultaneous updates from overwriting each other. Unavailable databases fail closed rather than accepting browser sessions.
+
+Old `sap_users`, `sap_sessions`, and `sap_progress` tables are left untouched. They lack trustworthy password hashes and/or ownership. Old browser accounts must register again; old sessions are deliberately not imported. No production data migration has been run by these code changes.
+
+Local development also requires PostgreSQL. Copy `.env.example` to `.env`, fill in the connection and administrator settings, then run `npm install`, `npm run dev`. Tests use isolated PostgreSQL via PGlite, not the live database: `npm test --prefix server`. Run `npm run build --prefix client` to build the frontend.
+
 # SAP Modern ABAP, RAP & React Mastery Studio 🔷
 
 A complete, production-grade full-stack web application designed for SAP developers, full-stack engineers, and solution architects mastering **Modern ABAP (7.50+ / 7.57+ / ABAP Cloud)**, **CDS View Entities**, **RAP Managed Business Objects (`strict ( 2 )`)**, **EML**, **OData V4**, and **React (Vite + Tailwind CSS)**.
@@ -200,21 +216,3 @@ The built-in analyzer automatically blocks classic legacy constructs:
 
 ## 📜 License
 MIT License. Built for SAP S/4HANA & BTP ABAP Cloud Practitioners.
-
-SQLite authentication setup
----------------------------
-Run the Express backend and serve the built client from it. Standalone Vercel API handlers are disabled; they do not provide SQLite persistence.
-
-Set these server environment variables before first startup:
-- ADMIN_USERNAME: initial administrator username
-- ADMIN_EMAIL: administrator email
-- ADMIN_PASSWORD: a unique password of at least 12 characters (no default password)
-- SQLITE_PATH: absolute path on persistent disk, optional; defaults to server/database.sqlite
-- APP_ORIGIN: exact browser origin, e.g. https://your-domain.example (defaults to http://localhost:5173 for Vite development)
-- NODE_ENV=production when deployed behind HTTPS
-
-Run npm run build --prefix client, then npm start. Remove ADMIN_PASSWORD after bootstrapping the first administrator. Register other users through the UI. In Admin > Approvals select the role to grant and approve access. Users remain pending until approval. Rejection, role changes and account deletion revoke existing sessions. Sessions expire after eight hours, and a new login replaces the previous session.
-
-Only SQLite is used for server data. The sql.js backend must run as ONE Node process with persistent disk; do not use clustered processes or ephemeral/serverless storage. Back up database.sqlite. Legacy shared learning records are preserved in their original tables but are not assigned to new users, because their owner cannot be established. Browser-local accounts and plaintext passwords are not imported: register fresh accounts.
-
-Verification: npm test --prefix server. Tests create and remove an isolated temporary SQLite database; they never use your production database.
