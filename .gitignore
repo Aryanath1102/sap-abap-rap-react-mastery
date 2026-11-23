@@ -34,3 +34,6 @@ Thumbs.db
 # Scratch generator scripts
 scratch/
 
+
+# Private environment import files
+*.env

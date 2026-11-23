@@ -126,7 +126,7 @@ app.use(express.json({ limit: '5mb' }));
 
 // Health Check
 app.get('/api/health', async (req, res) => {
-  res.json({ status: 'ok', service: 'SAP Modern ABAP, RAP & React Studio API', timestamp: new Date() });
+  res.json({ status: 'ok', database: 'postgresql', revision: process.env.VERCEL_GIT_COMMIT_SHA || 'local', service: 'SAP Modern ABAP, RAP & React Studio API', timestamp: new Date() });
 });
 
 mountAuth(app);
