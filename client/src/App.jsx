@@ -194,10 +194,15 @@ export function App() {
   useEffect(() => {
     if (!currentSession?.sessionId) return;
 
-    // Cross-tab storage listener (logs out immediately if another tab logs in or logs out)
+    // Cross-tab storage listener (logs out if another tab logs in as another session or logs out)
     const handleStorageChange = (e) => {
       if (e.key === 'sap_mastery_active_session_id') {
-        if (!e.newValue || e.newValue !== currentSession.sessionId) {
+        if (!e.newValue) {
+          // Explicit logout from another window
+          setCurrentSession(null);
+          showToast('Signed out from another browser window.', 'info');
+        } else if (e.newValue !== currentSession.sessionId) {
+          // Newer session created in another window
           setCurrentSession(null);
           showToast('⚠️ You have been automatically logged out because your session was updated in another window.', 'error');
         }
@@ -209,14 +214,14 @@ export function App() {
     const interval = setInterval(async () => {
       try {
         const verified = await fetchCurrentSession();
-        if (!verified || verified.sessionId !== currentSession.sessionId) {
+        if (!verified) {
           setCurrentSession(null);
           showToast('⚠️ You have been automatically logged out because your account was logged in from another device.', 'error');
         }
       } catch (err) {
         // network hiccup, don't kick immediately
       }
-    }, 4500);
+    }, 12000);
 
     return () => {
       window.removeEventListener('storage', handleStorageChange);

@@ -337,7 +337,30 @@ export function analyzeMentorPrompt(prompt) {
   }
 
   // Answer topic-specific queries
-  if (lower.includes('eml') || lower.includes('entity manipulation language')) {
+  if (lower.includes('immutable') || lower.includes('final(') || (lower.includes('variable') && lower.includes('cannot be modified'))) {
+    response += `### 💎 Modern ABAP 7.57+: Immutability with \`FINAL(...)\`\n\n` +
+      `In Modern ABAP 7.57+ (and ABAP Cloud), the correct keyword for declaring an **immutable inline variable** is **\`FINAL(...)\`**.\n\n` +
+      `#### 1. Layman Terms & Analogy\n` +
+      `- Think of \`DATA(...)\` as a **dry-erase whiteboard**: you write a number, and anyone can wipe it out and change it later.\n` +
+      `- Think of \`FINAL(...)\` as **stone engraving**: once you write the value during declaration, it is locked forever. Any later attempt to modify it causes a compile-time syntax check error.\n\n` +
+      `#### 2. Technical Comparison\n` +
+      `| Keyword | Introduced | Mutability | Scope | Best Use Case |\n` +
+      `| :--- | :--- | :--- | :--- | :--- |\n` +
+      `| **\`FINAL(...)\`** | **ABAP 7.57+** | **Immutable** (Write-once) | Block / Method local | Clean Functional programming, avoiding accidental state tampering |\n` +
+      `| **\`DATA(...)\`** | ABAP 7.40+ | Mutable (Read/Write) | Block / Method local | Variables that legitimately need recalculation in loops |\n` +
+      `| **\`CONSTANTS\`** | Classic ABAP | Immutable | Class / Method static | Compile-time fixed literals known before runtime |\n\n` +
+      `#### 3. Production Code Example\n` +
+      `\`\`\`abap\n" 1. Inline immutable variable declaration (ABAP 7.57+)\nFINAL(lv_tax_rate) = zcl_tax_calculator=>get_current_rate( 'DE' ).\n\n" 2. Attempting to modify triggers a syntax error:\n" lv_tax_rate = 0.25.  <-- ERROR: "lv_tax_rate" is declared as FINAL and cannot be modified.\n\n" 3. Immutable internal table reference\nFINAL(lt_active_orders) = CORRESPONDING tt_orders( lt_raw_orders ).\n\`\`\`\n\n` +
+      `> [!TIP]\n` +
+      `> **Clean Core Rule**: Always prefer \`FINAL(...)\` over \`DATA(...)\` whenever a local variable or internal table is initialized once and never needs re-assignment.`;
+  } else if (/^(hi|hello|hey|greetings|good morning|good afternoon)/i.test(prompt.trim())) {
+    response += `### 👋 Welcome to SAP Modern ABAP, RAP & Clean Core Studio!\n\n` +
+      `I am your **Principal SAP Technical Architect & Clean Core Advisor**. Ask me any architectural question, or paste your ABAP/RAP code for an instant Clean Core compliance review!\n\n` +
+      `- **Modern ABAP (7.57+)**: \`FINAL(...)\`, \`VALUE #()\`, \`COND #()\`, \`REDUCE #()\`, \`CORRESPONDING #()\`\n` +
+      `- **RAP**: Behavior Definitions with \`strict ( 2 )\`, EML with \`IN LOCAL MODE\`, Draft lifecycle\n` +
+      `- **Clean Core**: Released APIs (\`I_BusinessPartner\`, \`I_Product\`), no unreleased tables\n` +
+      `- **React Integration**: OData V4 \`fetch()\`, \`X-CSRF-Token\` handshake, \`PATCH\` delta updates`;
+  } else if (lower.includes('eml') || lower.includes('entity manipulation language')) {
     response += `### 📘 EML (Entity Manipulation Language) Deep Dive\n\n` +
       `**Level 1 (Layman's Analogy):**\n` +
       `Think of EML like Prisma or an ORM client built directly into the ABAP kernel. Instead of raw SQL INSERT/UPDATE, you invoke business logic methods with full validation, locking, and authorization.\n\n` +

@@ -26,6 +26,7 @@ import {
   deleteUser,
   getActiveSessions,
   getCurrentSession,
+  saveActiveSession,
   loginUser,
   logoutSession,
   switchActiveSession,
@@ -179,53 +180,76 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
 
   const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-  // Strictly use Gemma 4 26B (MoE: gemma-4-26b-a4b-it / gemma-4-26b-it)
-  const models = ['gemma-4-26b-a4b-it', 'gemma-4-26b-it', 'gemma-4-26b'];
+  // Model cascade: Gemma 4 26B first, then Gemini Flash as fallback on high demand
+  const modelCascade = [
+    { name: 'gemma-4-26b-a4b-it', retries: 2, label: 'Gemma 4 26B' },
+    { name: 'gemma-4-26b-it', retries: 1, label: 'Gemma 4 26B' },
+    { name: 'gemini-2.0-flash', retries: 2, label: 'Gemini 2.0 Flash' },
+    { name: 'gemini-1.5-flash', retries: 1, label: 'Gemini 1.5 Flash' }
+  ];
+
   let botText = '';
+  let usedModel = '';
   let lastErr = null;
 
-  for (const m of models) {
-    try {
-      const payload = {
-        contents: [{
-          role: 'user',
-          parts: [{ text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}` }]
-        }]
-      };
-
-      // For Google Auth keys (starting with AQ.), pass in x-goog-api-key header and NOT in ?key= URL param
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
-      const response = await fetch(url, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': key
-        },
-        body: JSON.stringify(payload)
-      });
-
-      const data = await response.json();
-      if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-        botText = data.candidates[0].content.parts[0].text;
-        dailyUsage.count++;
-        try {
-          localStorage.setItem('sap_daily_gemma_usage', JSON.stringify(dailyUsage));
-        } catch {
-          // ignore
+  for (const modelDef of modelCascade) {
+    for (let attempt = 0; attempt <= modelDef.retries; attempt++) {
+      try {
+        if (attempt > 0) {
+          // Exponential backoff: 1s, 2s
+          await new Promise(r => setTimeout(r, 1000 * Math.pow(2, attempt - 1)));
         }
-        break;
+
+        const payload = {
+          contents: [{
+            role: 'user',
+            parts: [{ text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}` }]
+          }]
+        };
+
+        // For Google Auth keys (starting with AQ.), pass in x-goog-api-key header and NOT in ?key= URL param
+        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelDef.name)}:generateContent`;
+        const response = await fetch(url, {
+          method: 'POST',
+          headers: {
+            'Content-Type': 'application/json',
+            'x-goog-api-key': key
+          },
+          body: JSON.stringify(payload)
+        });
+
+        const data = await response.json();
+        if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          botText = data.candidates[0].content.parts[0].text;
+          usedModel = modelDef.label;
+          dailyUsage.count++;
+          try {
+            localStorage.setItem('sap_daily_gemma_usage', JSON.stringify(dailyUsage));
+          } catch {
+            // ignore
+          }
+          break;
+        }
+        if (data.error) {
+          const msg = data.error.message || '';
+          lastErr = new Error(msg || `API Error ${data.error.code}`);
+          if (msg.includes('high demand') || msg.includes('overloaded') || data.error.code === 503) {
+            continue; // retry
+          }
+          if (data.error.code === 404 || msg.includes('not found') || msg.includes('no longer available') || msg.includes('not supported')) {
+            break; // next model
+          }
+          break;
+        }
+      } catch (e) {
+        lastErr = e;
       }
-      if (data.error) {
-        lastErr = new Error(data.error.message || `API Error ${data.error.code}`);
-        if (data.error.code === 404 || data.error.message?.includes('not found')) continue;
-      }
-    } catch (e) {
-      lastErr = e;
     }
+    if (botText) break;
   }
 
   if (!botText) {
-    throw lastErr || new Error('No candidate content received from Gemma 4 26B');
+    throw lastErr || new Error('No candidate content received from AI models');
   }
 
   return addLocalMentorExchange(content, botText);
@@ -319,18 +343,22 @@ export async function fetchCurrentSession() {
   if (!local) return null;
 
   try {
-    const res = await fetchWithTimeout(`${API_BASE}/auth?action=session&sessionId=${encodeURIComponent(local.sessionId)}`);
+    const res = await fetchWithTimeout(
+      `${API_BASE}/auth?action=session&sessionId=${encodeURIComponent(local.sessionId)}&userId=${encodeURIComponent(local.userId || '')}`
+    );
     if (res.ok) {
       const data = await res.json();
-      if (!data) {
-        // Session was superseded or terminated on another device
+      // Only logout if the server EXPLICITLY reports this session was superseded on another device
+      if (data && data.superseded === true) {
         logoutSession(local.sessionId);
         return null;
       }
-      return data;
+      if (data && data.sessionId) {
+        return { ...local, ...data };
+      }
     }
   } catch {
-    // Local fallback
+    // Local fallback / serverless cold-start / offline: keep verified local session
   }
   return local;
 }
@@ -346,16 +374,27 @@ export async function fetchActiveSessions() {
 }
 
 export async function login(credentials) {
+  let session = null;
   try {
     const res = await fetchWithTimeout(`${API_BASE}/auth/login`, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(credentials)
     });
-    if (res.ok) return await res.json();
+    if (res.ok) {
+      session = await res.json();
+    }
   } catch {
     // Local fallback
   }
+
+  if (session && session.sessionId) {
+    // CRITICAL: Immediately persist the server session into browser local storage
+    saveActiveSession(session);
+    return session;
+  }
+
+  // Fallback to local authentication engine
   return loginUser(credentials);
 }
 

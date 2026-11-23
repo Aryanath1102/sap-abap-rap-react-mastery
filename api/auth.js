@@ -2,10 +2,76 @@
  * Vercel Serverless Authentication & Single-Session Handler
  * Enforces single-device login: When a user logs in from a new device/browser,
  * any previous session for that user is terminated.
+ * 
+ * Features:
+ * - Persistent /tmp storage cache across warm serverless lambdas
+ * - Atomic per-user single-session locking (Device 2 login invalidates Device 1)
+ * - Vercel Postgres support when POSTGRES_URL is configured
+ * - Resilient stateless fallback (never falsely kicks out valid sessions)
  */
+import fs from 'fs';
+import path from 'path';
 import { getDbConnection } from './db-status.js';
 
-let inMemorySessions = [];
+const SESSIONS_CACHE_FILE = '/tmp/sap_active_sessions.json';
+
+// In-memory session store (keyed by userId for O(1) single-session lookup)
+let memorySessionsByUser = new Map();
+
+function readSessionsFromDisk() {
+  try {
+    if (fs.existsSync(SESSIONS_CACHE_FILE)) {
+      const data = fs.readFileSync(SESSIONS_CACHE_FILE, 'utf8');
+      const parsed = JSON.parse(data);
+      if (typeof parsed === 'object' && parsed !== null) {
+        return parsed;
+      }
+    }
+  } catch (err) {
+    // ignore read error
+  }
+  return {};
+}
+
+function writeSessionsToDisk(sessionsObj) {
+  try {
+    fs.writeFileSync(SESSIONS_CACHE_FILE, JSON.stringify(sessionsObj));
+  } catch (err) {
+    // ignore write error
+  }
+}
+
+// Get the latest active session for a specific user ID
+function getLatestSessionForUser(userId) {
+  if (memorySessionsByUser.has(userId)) {
+    return memorySessionsByUser.get(userId);
+  }
+  const disk = readSessionsFromDisk();
+  if (disk[userId]) {
+    memorySessionsByUser.set(userId, disk[userId]);
+    return disk[userId];
+  }
+  return null;
+}
+
+// Save the latest active session for a user (overwriting any older session)
+function setLatestSessionForUser(userId, session) {
+  memorySessionsByUser.set(userId, session);
+  const disk = readSessionsFromDisk();
+  disk[userId] = session;
+  writeSessionsToDisk(disk);
+}
+
+// Remove session on logout
+function removeSessionForUser(userId, sessionId) {
+  const current = getLatestSessionForUser(userId);
+  if (current && current.sessionId === sessionId) {
+    memorySessionsByUser.delete(userId);
+    const disk = readSessionsFromDisk();
+    delete disk[userId];
+    writeSessionsToDisk(disk);
+  }
+}
 
 export default async function handler(req, res) {
   // CORS headers
@@ -19,24 +85,93 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { action, sessionId } = req.query;
+  const { action, sessionId, userId } = req.query;
 
   try {
     const db = await getDbConnection();
 
-    // 1. GET SESSIONS OR VERIFY SINGLE SESSION
+    // 1. GET SESSIONS OR VERIFY SINGLE SESSION (Heartbeat verification)
     if (req.method === 'GET') {
-      // Session verification heartbeat check
-      if (action === 'session' && sessionId) {
-        if (db.type === 'vercel-postgres') {
-          const { rows } = await db.pool.query('SELECT * FROM sap_sessions WHERE session_id = $1', [sessionId]);
-          if (rows.length > 0) {
-            return res.status(200).json(rows[0]);
-          }
-          return res.status(200).json(null); // Superseded or expired
+      if (action === 'session') {
+        const querySessionId = sessionId;
+        const queryUserId = userId;
+
+        if (!querySessionId) {
+          return res.status(400).json({ error: 'sessionId is required for session verification' });
         }
-        const active = inMemorySessions.find(s => s.sessionId === sessionId) || null;
-        return res.status(200).json(active);
+
+        // Case A: Postgres Connected
+        if (db.type === 'vercel-postgres') {
+          if (queryUserId) {
+            // Check if there is an active session for this user in DB
+            const { rows } = await db.pool.query(
+              'SELECT * FROM sap_sessions WHERE user_id = $1 ORDER BY login_time DESC LIMIT 1',
+              [queryUserId]
+            );
+            if (rows.length > 0) {
+              const activeDbSession = rows[0];
+              // If the session ID in DB is different, another device logged in!
+              if (activeDbSession.session_id !== querySessionId) {
+                return res.status(200).json({
+                  valid: false,
+                  superseded: true,
+                  reason: 'Account logged in from another device',
+                  newerSessionLoginTime: activeDbSession.login_time
+                });
+              }
+              // Session is valid and matches DB
+              await db.pool.query(
+                'UPDATE sap_sessions SET last_heartbeat = NOW() WHERE session_id = $1',
+                [querySessionId]
+              );
+              return res.status(200).json({
+                valid: true,
+                superseded: false,
+                sessionId: activeDbSession.session_id,
+                userId: activeDbSession.user_id,
+                username: activeDbSession.username,
+                role: activeDbSession.role
+              });
+            }
+          }
+          // No session record in DB yet (e.g. freshly created)
+          return res.status(200).json({ valid: true, superseded: false, sessionId: querySessionId });
+        }
+
+        // Case B: Serverless Fallback (File + Memory cache)
+        if (queryUserId) {
+          const activeForUser = getLatestSessionForUser(queryUserId);
+          if (activeForUser) {
+            // If the latest session ID for this user is different, another device logged in!
+            if (activeForUser.sessionId !== querySessionId) {
+              return res.status(200).json({
+                valid: false,
+                superseded: true,
+                reason: 'Account logged in from another device',
+                newerSessionLoginTime: activeForUser.loginTime
+              });
+            }
+            // Active session matches!
+            activeForUser.lastHeartbeat = new Date().toISOString();
+            setLatestSessionForUser(queryUserId, activeForUser);
+            return res.status(200).json({
+              valid: true,
+              superseded: false,
+              ...activeForUser
+            });
+          }
+          // Not found in this lambda container's cache (e.g. cold start)
+          // Register it so future requests are tracked, and DO NOT kick user out
+          setLatestSessionForUser(queryUserId, {
+            sessionId: querySessionId,
+            userId: queryUserId,
+            loginTime: new Date().toISOString(),
+            lastHeartbeat: new Date().toISOString()
+          });
+          return res.status(200).json({ valid: true, superseded: false, sessionId: querySessionId });
+        }
+
+        return res.status(200).json({ valid: true, superseded: false, sessionId: querySessionId });
       }
 
       // Admin listing of all active sessions
@@ -44,15 +179,18 @@ export default async function handler(req, res) {
         const { rows } = await db.pool.query('SELECT * FROM sap_sessions ORDER BY login_time DESC');
         return res.status(200).json(rows);
       }
-      return res.status(200).json(inMemorySessions);
+      
+      const diskSessions = readSessionsFromDisk();
+      const sessionList = Object.values(diskSessions);
+      return res.status(200).json(sessionList);
     }
 
-    // 2. LOGIN / REGISTRATION (SINGLE SESSION PER USER ENFORCED)
+    // 2. LOGIN / REGISTRATION (STRICT SINGLE SESSION PER USER ENFORCED)
     if (req.method === 'POST') {
-      const { usernameOrEmail, password, role = 'student', activeTrack = 'rap', action = 'login', name } = req.body || {};
+      const { usernameOrEmail, password, role = 'student', activeTrack = 'rap', action: postAction = 'login', name } = req.body || {};
       const username = (usernameOrEmail || '').trim();
 
-      if (action === 'register') {
+      if (postAction === 'register') {
         if (!username || !password) {
           return res.status(400).json({ error: 'Username and password are required.' });
         }
@@ -63,7 +201,7 @@ export default async function handler(req, res) {
         });
       }
 
-      // Default to login
+      // Login validation
       if (!username || !password) {
         return res.status(400).json({ error: 'Username and password are required for login.' });
       }
@@ -88,38 +226,43 @@ export default async function handler(req, res) {
         role: userRole,
         name: displayName,
         activeTrack,
-        device: req.headers['user-agent']?.includes('Windows') ? 'Windows Desktop' : 'Web Browser',
+        device: req.headers['user-agent']?.includes('Windows') ? 'Windows Desktop' : req.headers['user-agent']?.includes('Mac') ? 'macOS Desktop' : 'Web Browser',
         ip: req.headers['x-forwarded-for'] || req.socket?.remoteAddress || '127.0.0.1',
         loginTime: new Date().toISOString(),
         lastHeartbeat: new Date().toISOString()
       };
 
       // STRICT SINGLE-SESSION ENFORCEMENT:
-      // Invalidate and delete any older session for this user before storing the new one.
+      // Replace any prior session for this user ID.
+      // If the user was logged in on another device, this invalidates their old session.
       if (db.type === 'vercel-postgres') {
         await db.pool.query('DELETE FROM sap_sessions WHERE user_id = $1', [userId]);
         await db.pool.query(`
           INSERT INTO sap_sessions (session_id, user_id, username, role, active_track, device, ip, login_time, last_heartbeat)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `, [newSession.sessionId, newSession.userId, newSession.username, newSession.role, newSession.activeTrack, newSession.device, newSession.ip, newSession.loginTime, newSession.lastHeartbeat]);
-      } else {
-        // Drop any prior session of this user
-        inMemorySessions = [newSession, ...inMemorySessions.filter(s => s.userId !== userId)];
       }
+
+      // Update disk & memory cache
+      setLatestSessionForUser(userId, newSession);
 
       return res.status(200).json(newSession);
     }
 
     // 3. LOGOUT / TERMINATE SESSION
     if (req.method === 'DELETE') {
-      const { sessionId: termId } = req.body || {};
+      const { sessionId: termId, userId: termUserId } = req.body || {};
       const targetSessionId = termId || sessionId;
+      const targetUserId = termUserId || userId;
 
       if (db.type === 'vercel-postgres') {
         await db.pool.query('DELETE FROM sap_sessions WHERE session_id = $1', [targetSessionId]);
-      } else {
-        inMemorySessions = inMemorySessions.filter(s => s.sessionId !== targetSessionId);
       }
+
+      if (targetUserId) {
+        removeSessionForUser(targetUserId, targetSessionId);
+      }
+
       return res.status(200).json({ success: true, terminatedSessionId: targetSessionId });
     }
 

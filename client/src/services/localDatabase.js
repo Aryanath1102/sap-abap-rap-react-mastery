@@ -434,27 +434,58 @@ export function getActiveSessions() {
   return valid;
 }
 
+export function saveActiveSession(session) {
+  if (!session || !session.sessionId) return;
+  const sessions = getActiveSessions().filter(s => s.userId !== session.userId);
+  const updated = [session, ...sessions];
+  writeJson(KEYS.SESSIONS, updated);
+  localStorage.setItem(KEYS.ACTIVE_SESSION, session.sessionId);
+  localStorage.setItem('sap_mastery_current_session', JSON.stringify(session));
+}
+
 export function getCurrentSession() {
   const activeId = localStorage.getItem(KEYS.ACTIVE_SESSION);
-  if (!activeId) return null;
+  const storedSessionRaw = localStorage.getItem('sap_mastery_current_session');
+  let currentObj = null;
+  if (storedSessionRaw) {
+    try {
+      currentObj = JSON.parse(storedSessionRaw);
+    } catch {}
+  }
 
+  if (!activeId && !currentObj) return null;
+
+  const targetId = activeId || currentObj?.sessionId;
   const sessions = getActiveSessions();
-  const found = sessions.find(s => s.sessionId === activeId);
+  let found = sessions.find(s => s.sessionId === targetId);
+
+  // If found in currentObj but not in sessions array, restore it
+  if (!found && currentObj && currentObj.sessionId === targetId) {
+    found = currentObj;
+    writeJson(KEYS.SESSIONS, [found, ...sessions.filter(s => s.userId !== found.userId)]);
+    localStorage.setItem(KEYS.ACTIVE_SESSION, found.sessionId);
+  }
+
   if (!found) {
     localStorage.removeItem(KEYS.ACTIVE_SESSION);
+    localStorage.removeItem('sap_mastery_current_session');
     return null;
   }
 
-  // Check if a newer session exists for this user (logged in from another device/browser)
-  const newerSession = sessions.find(s => s.userId === found.userId && s.sessionId !== found.sessionId && new Date(s.loginTime).getTime() > new Date(found.loginTime).getTime());
+  // Check if a newer session exists for this user in local database (logged in from another tab)
+  const newerSession = sessions.find(
+    s => s.userId === found.userId && s.sessionId !== found.sessionId && new Date(s.loginTime).getTime() > new Date(found.loginTime).getTime()
+  );
   if (newerSession) {
-    // Superseded by a newer login on another device -> Auto logout this stale session
+    // Superseded by a newer login -> Auto logout this stale session
     localStorage.removeItem(KEYS.ACTIVE_SESSION);
+    localStorage.removeItem('sap_mastery_current_session');
     return null;
   }
 
   // Refresh heartbeat
   found.lastHeartbeat = new Date().toISOString();
+  localStorage.setItem('sap_mastery_current_session', JSON.stringify(found));
   writeJson(KEYS.SESSIONS, sessions);
   return found;
 }
@@ -511,10 +542,7 @@ export function loginUser({ usernameOrEmail, password, role }) {
     lastHeartbeat: new Date().toISOString()
   };
 
-  const updatedSessions = [newSession, ...otherSessions];
-  writeJson(KEYS.SESSIONS, updatedSessions);
-  localStorage.setItem(KEYS.ACTIVE_SESSION, newSession.sessionId);
-
+  saveActiveSession(newSession);
   return newSession;
 }
 
@@ -523,8 +551,9 @@ export function logoutSession(sessionId) {
   writeJson(KEYS.SESSIONS, sessions);
 
   const activeId = localStorage.getItem(KEYS.ACTIVE_SESSION);
-  if (activeId === sessionId) {
+  if (activeId === sessionId || !sessionId) {
     localStorage.removeItem(KEYS.ACTIVE_SESSION);
+    localStorage.removeItem('sap_mastery_current_session');
   }
   return sessions;
 }
