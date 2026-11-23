@@ -1,5 +1,7 @@
 /**
- * Vercel Serverless Authentication & Concurrent Session Handler
+ * Vercel Serverless Authentication & Single-Session Handler
+ * Enforces single-device login: When a user logs in from a new device/browser,
+ * any previous session for that user is terminated.
  */
 import { getDbConnection } from './db-status.js';
 
@@ -17,13 +19,27 @@ export default async function handler(req, res) {
     return;
   }
 
-  const { action } = req.query;
+  const { action, sessionId } = req.query;
 
   try {
     const db = await getDbConnection();
 
-    // 1. GET ALL ACTIVE SESSIONS
+    // 1. GET SESSIONS OR VERIFY SINGLE SESSION
     if (req.method === 'GET') {
+      // Session verification heartbeat check
+      if (action === 'session' && sessionId) {
+        if (db.type === 'vercel-postgres') {
+          const { rows } = await db.pool.query('SELECT * FROM sap_sessions WHERE session_id = $1', [sessionId]);
+          if (rows.length > 0) {
+            return res.status(200).json(rows[0]);
+          }
+          return res.status(200).json(null); // Superseded or expired
+        }
+        const active = inMemorySessions.find(s => s.sessionId === sessionId) || null;
+        return res.status(200).json(active);
+      }
+
+      // Admin listing of all active sessions
       if (db.type === 'vercel-postgres') {
         const { rows } = await db.pool.query('SELECT * FROM sap_sessions ORDER BY login_time DESC');
         return res.status(200).json(rows);
@@ -31,7 +47,7 @@ export default async function handler(req, res) {
       return res.status(200).json(inMemorySessions);
     }
 
-    // 2. LOGIN / REGISTRATION (BASIC AUTH WITH ADMIN APPROVAL)
+    // 2. LOGIN / REGISTRATION (SINGLE SESSION PER USER ENFORCED)
     if (req.method === 'POST') {
       const { usernameOrEmail, password, role = 'student', activeTrack = 'rap', action = 'login', name } = req.body || {};
       const username = (usernameOrEmail || '').trim();
@@ -59,13 +75,14 @@ export default async function handler(req, res) {
         }
       }
 
-      const sessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+      const userId = isSuperAdmin ? 'usr_admin_aryanath' : `usr_${username.toLowerCase()}`;
+      const newSessionId = `sess_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
       const displayName = isSuperAdmin ? 'Aryanath (Enterprise Administrator)' : (name || username);
       const userRole = isSuperAdmin ? 'admin' : (role === 'admin' ? 'admin' : 'student');
 
       const newSession = {
-        sessionId,
-        userId: isSuperAdmin ? 'usr_admin_aryanath' : `usr_${username.toLowerCase()}`,
+        sessionId: newSessionId,
+        userId,
         username: isSuperAdmin ? 'Aryanath' : username,
         email: username.includes('@') ? username : `${username.toLowerCase()}@sap-mastery.io`,
         role: userRole,
@@ -77,27 +94,33 @@ export default async function handler(req, res) {
         lastHeartbeat: new Date().toISOString()
       };
 
+      // STRICT SINGLE-SESSION ENFORCEMENT:
+      // Invalidate and delete any older session for this user before storing the new one.
       if (db.type === 'vercel-postgres') {
+        await db.pool.query('DELETE FROM sap_sessions WHERE user_id = $1', [userId]);
         await db.pool.query(`
           INSERT INTO sap_sessions (session_id, user_id, username, role, active_track, device, ip, login_time, last_heartbeat)
           VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)
         `, [newSession.sessionId, newSession.userId, newSession.username, newSession.role, newSession.activeTrack, newSession.device, newSession.ip, newSession.loginTime, newSession.lastHeartbeat]);
       } else {
-        inMemorySessions = [newSession, ...inMemorySessions.filter(s => s.sessionId !== sessionId)];
+        // Drop any prior session of this user
+        inMemorySessions = [newSession, ...inMemorySessions.filter(s => s.userId !== userId)];
       }
 
       return res.status(200).json(newSession);
     }
 
-    // 3. LOGOUT / KICK SESSION
+    // 3. LOGOUT / TERMINATE SESSION
     if (req.method === 'DELETE') {
-      const { sessionId } = req.body || {};
+      const { sessionId: termId } = req.body || {};
+      const targetSessionId = termId || sessionId;
+
       if (db.type === 'vercel-postgres') {
-        await db.pool.query('DELETE FROM sap_sessions WHERE session_id = $1', [sessionId]);
+        await db.pool.query('DELETE FROM sap_sessions WHERE session_id = $1', [targetSessionId]);
       } else {
-        inMemorySessions = inMemorySessions.filter(s => s.sessionId !== sessionId);
+        inMemorySessions = inMemorySessions.filter(s => s.sessionId !== targetSessionId);
       }
-      return res.status(200).json({ success: true, terminatedSessionId: sessionId });
+      return res.status(200).json({ success: true, terminatedSessionId: targetSessionId });
     }
 
     res.status(405).json({ error: 'Method Not Allowed' });

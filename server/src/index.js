@@ -52,7 +52,8 @@ async function callGenerativeLanguageApi(model, apiKey, content) {
         }]
       };
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(apiKey)}`;
+      // For Google Auth keys (starting with AQ.), pass in x-goog-api-key header and NOT in ?key= URL param
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
       
       const reqHeaders = {
         'Content-Type': 'application/json',

@@ -10,7 +10,6 @@ import { ArchitectureView } from './views/ArchitectureView';
 import { MentorQuizView } from './views/MentorQuizView';
 import { TrackSelectorView } from './views/TrackSelectorView';
 import { AdminView } from './views/AdminView';
-import { AuthModal } from './components/AuthModal';
 import { LoginScreen } from './components/LoginScreen';
 import { LESSONS } from './data/lessons';
 import { FIORI_LESSONS } from './data/fioriLessons';
@@ -48,10 +47,8 @@ export function App() {
   const [mobileSidebarOpen, setMobileSidebarOpen] = useState(false);
   const [toast, setToast] = useState(null);
 
-  // Authentication & Concurrent Sessions State
-  const [authModalOpen, setAuthModalOpen] = useState(false);
+  // Authentication & Single-Session State
   const [currentSession, setCurrentSession] = useState(null);
-  const [activeSessions, setActiveSessions] = useState([]);
   const [broadcast, setBroadcast] = useState(null);
   const [broadcastDismissed, setBroadcastDismissed] = useState(false);
 
@@ -160,24 +157,27 @@ export function App() {
     handleNavigate('lessons', lessonId, '', pushHistory);
   };
 
-  // Load initial state & active sessions from backend / local DB
+  // Load initial state from backend / user-isolated local DB
   useEffect(() => {
     async function loadInitialData() {
       try {
         setLoading(true);
-        const [progData, checklistsData, currentSess, sessionsList, bCast] = await Promise.all([
-          fetchProgress(),
-          fetchProjectChecklists(),
+        const [currentSess, bCast] = await Promise.all([
           fetchCurrentSession(),
-          fetchActiveSessions(),
           fetchBroadcast()
+        ]);
+
+        setCurrentSession(currentSess);
+        setBroadcast(bCast);
+
+        // Fetch user-scoped progress & checklists
+        const [progData, checklistsData] = await Promise.all([
+          fetchProgress(),
+          fetchProjectChecklists()
         ]);
 
         setProgress(progData);
         setProjectChecklists(checklistsData);
-        setCurrentSession(currentSess);
-        setActiveSessions(sessionsList);
-        setBroadcast(bCast);
         applyThemeClass(progData.active_theme || 'light');
       } catch (err) {
         console.warn('Backend loading warning:', err.message);
@@ -188,6 +188,41 @@ export function App() {
 
     loadInitialData();
   }, []);
+
+  // Single-device / single-session concurrency enforcer
+  // Automatically logs out if another device or tab establishes a newer session for this user.
+  useEffect(() => {
+    if (!currentSession?.sessionId) return;
+
+    // Cross-tab storage listener (logs out immediately if another tab logs in or logs out)
+    const handleStorageChange = (e) => {
+      if (e.key === 'sap_mastery_active_session_id') {
+        if (!e.newValue || e.newValue !== currentSession.sessionId) {
+          setCurrentSession(null);
+          showToast('⚠️ You have been automatically logged out because your session was updated in another window.', 'error');
+        }
+      }
+    };
+    window.addEventListener('storage', handleStorageChange);
+
+    // Periodic heartbeat verification (verifies session is still active and not superseded by another device)
+    const interval = setInterval(async () => {
+      try {
+        const verified = await fetchCurrentSession();
+        if (!verified || verified.sessionId !== currentSession.sessionId) {
+          setCurrentSession(null);
+          showToast('⚠️ You have been automatically logged out because your account was logged in from another device.', 'error');
+        }
+      } catch (err) {
+        // network hiccup, don't kick immediately
+      }
+    }, 4500);
+
+    return () => {
+      window.removeEventListener('storage', handleStorageChange);
+      clearInterval(interval);
+    };
+  }, [currentSession?.sessionId]);
 
   function applyThemeClass(theme) {
     if (theme === 'dark') {
@@ -309,10 +344,20 @@ export function App() {
       <>
         {toast && <Toast message={toast.message} type={toast.type} onClose={() => setToast(null)} />}
         <LoginScreen
-          onLoginSuccess={(sess) => {
+          onLoginSuccess={async (sess) => {
             setCurrentSession(sess);
-            fetchActiveSessions().then(setActiveSessions);
             showToast(`Welcome to SAP Studio, ${sess.name}!`, 'success');
+            try {
+              const [progData, checklistsData] = await Promise.all([
+                fetchProgress(),
+                fetchProjectChecklists()
+              ]);
+              setProgress(progData);
+              setProjectChecklists(checklistsData);
+              applyThemeClass(progData.active_theme || 'light');
+            } catch (err) {
+              console.warn('Failed to load user dataset:', err);
+            }
           }}
         />
       </>
@@ -331,8 +376,6 @@ export function App() {
         activeTrack={activeTrack}
         onSelectTrack={handleSelectTrack}
         currentSession={currentSession}
-        activeSessionsCount={activeSessions.length || 1}
-        onOpenAuth={() => setAuthModalOpen(true)}
         onNavigate={(view) => handleNavigate(view, activeLessonId, '', true)}
         onLogout={handleLogout}
       />
@@ -443,19 +486,6 @@ export function App() {
           )}
         </main>
       </div>
-
-      {/* Concurrent Authentication Modal */}
-      <AuthModal
-        isOpen={authModalOpen}
-        onClose={() => setAuthModalOpen(false)}
-        currentSession={currentSession}
-        activeSessions={activeSessions}
-        onSessionChange={(sess) => {
-          setCurrentSession(sess);
-          fetchActiveSessions().then(setActiveSessions);
-        }}
-        onShowToast={showToast}
-      />
 
       {/* Floating SaaS Toast Notification */}
       <Toast toast={toast} onClose={() => setToast(null)} />

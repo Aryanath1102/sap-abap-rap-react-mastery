@@ -101,10 +101,10 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
   };
 
   // Quiz Logic
-  const currentQ = QUIZ_DATA[currentQuestionIndex];
+  const currentQ = QUIZ_DATA[currentQuestionIndex] || null;
 
   const handleSelectOption = (idx) => {
-    if (isAnswered) return;
+    if (isAnswered || !currentQ) return;
     setSelectedOption(idx);
     setIsAnswered(true);
 
@@ -278,7 +278,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
             </span>
           </div>
 
-          {!isQuizFinished ? (
+          {!isQuizFinished && currentQ ? (
             <div className="space-y-4">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-sky-600 dark:text-sky-400 font-mono">

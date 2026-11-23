@@ -1,7 +1,7 @@
 /**
  * Client-Side Persistence Layer (Browser-Native SQLite Storage)
+ * With Per-User Isolated Data Partitioning & Single-Session Concurrency.
  * Enables 100% serverless, zero-backend deployment on Vercel and Netlify.
- * Persists user state in the browser with full Clean Core verification.
  */
 import { validateAssignment, analyzeMentorPrompt } from './cleanCoreValidator';
 
@@ -68,9 +68,31 @@ function writeJson(key, val) {
   }
 }
 
-// 1. User Progress
-export function getLocalProgress() {
-  const p = readJson(KEYS.PROGRESS, DEFAULT_PROGRESS);
+/**
+ * Get active user ID for data partitioning.
+ * If no session is active, defaults to 'guest'.
+ */
+export function getActiveUserId() {
+  const activeSessionId = localStorage.getItem(KEYS.ACTIVE_SESSION);
+  if (!activeSessionId) return 'guest';
+  const sessions = readJson(KEYS.SESSIONS, []);
+  const session = sessions.find(s => s.sessionId === activeSessionId);
+  return session?.userId || 'guest';
+}
+
+/**
+ * Generates user-partitioned storage key.
+ * Guarantees that every user's progress, checklist, and quiz results are completely isolated.
+ */
+function getUserKey(baseKey, userId = null) {
+  const uid = userId || getActiveUserId();
+  return `${baseKey}_${uid}`;
+}
+
+// 1. User Progress (Per-User Isolated)
+export function getLocalProgress(userId = null) {
+  const key = getUserKey(KEYS.PROGRESS, userId);
+  const p = readJson(key, DEFAULT_PROGRESS);
   const completed = p.completed_days || [];
   const solved = p.solved_exercises || [];
   const streak = (completed.length === 0 && solved.length === 0)
@@ -80,8 +102,9 @@ export function getLocalProgress() {
   return { ...p, streak };
 }
 
-export function updateLocalProgress(data) {
-  const current = getLocalProgress();
+export function updateLocalProgress(data, userId = null) {
+  const key = getUserKey(KEYS.PROGRESS, userId);
+  const current = getLocalProgress(userId);
   const completed = data.completed_days !== undefined ? data.completed_days : current.completed_days;
   const solved = data.solved_exercises !== undefined ? data.solved_exercises : current.solved_exercises;
   const streak = (completed.length === 0 && solved.length === 0)
@@ -96,25 +119,32 @@ export function updateLocalProgress(data) {
     streak,
     updated_at: new Date().toISOString()
   };
-  writeJson(KEYS.PROGRESS, updated);
+  writeJson(key, updated);
   return updated;
 }
 
-export function resetLocalProgress() {
-  writeJson(KEYS.PROGRESS, { ...DEFAULT_PROGRESS, updated_at: new Date().toISOString() });
-  writeJson(KEYS.CHECKLISTS, {});
-  writeJson(KEYS.SUBMISSIONS, []);
-  writeJson(KEYS.QUIZ, []);
+export function resetLocalProgress(userId = null) {
+  const progressKey = getUserKey(KEYS.PROGRESS, userId);
+  const checklistKey = getUserKey(KEYS.CHECKLISTS, userId);
+  const subKey = getUserKey(KEYS.SUBMISSIONS, userId);
+  const quizKey = getUserKey(KEYS.QUIZ, userId);
+
+  writeJson(progressKey, { ...DEFAULT_PROGRESS, updated_at: new Date().toISOString() });
+  writeJson(checklistKey, {});
+  writeJson(subKey, []);
+  writeJson(quizKey, []);
   return DEFAULT_PROGRESS;
 }
 
-// 2. Project Checklists
-export function getLocalProjectChecklists() {
-  return readJson(KEYS.CHECKLISTS, {});
+// 2. Project Checklists (Per-User Isolated)
+export function getLocalProjectChecklists(userId = null) {
+  const key = getUserKey(KEYS.CHECKLISTS, userId);
+  return readJson(key, {});
 }
 
-export function updateLocalProjectStep(projectId, stepIndex, completed) {
-  const current = getLocalProjectChecklists();
+export function updateLocalProjectStep(projectId, stepIndex, completed, userId = null) {
+  const key = getUserKey(KEYS.CHECKLISTS, userId);
+  const current = getLocalProjectChecklists(userId);
   const currentSteps = current[projectId] || [];
   let updatedSteps;
   if (completed) {
@@ -123,14 +153,15 @@ export function updateLocalProjectStep(projectId, stepIndex, completed) {
     updatedSteps = currentSteps.filter(s => s !== stepIndex);
   }
   const next = { ...current, [projectId]: updatedSteps };
-  writeJson(KEYS.CHECKLISTS, next);
+  writeJson(key, next);
   return next;
 }
 
-// 3. Assignment Submissions & Clean Core Validator
-export function submitLocalAssignment(lessonId, userCode) {
+// 3. Assignment Submissions & Clean Core Validator (Per-User Isolated)
+export function submitLocalAssignment(lessonId, userCode, userId = null) {
   const validation = validateAssignment(lessonId, userCode);
-  const submissions = readJson(KEYS.SUBMISSIONS, []);
+  const key = getUserKey(KEYS.SUBMISSIONS, userId);
+  const submissions = readJson(key, []);
 
   const newSub = {
     id: Date.now(),
@@ -142,16 +173,16 @@ export function submitLocalAssignment(lessonId, userCode) {
   };
 
   const updatedSubmissions = [newSub, ...submissions];
-  writeJson(KEYS.SUBMISSIONS, updatedSubmissions);
+  writeJson(key, updatedSubmissions);
 
   // If passed, automatically add to solved_exercises and activate streak
   if (validation.status === 'passed') {
-    const prog = getLocalProgress();
+    const prog = getLocalProgress(userId);
     const solved = prog.solved_exercises || [];
     if (!solved.includes(lessonId)) {
       const nextSolved = [...solved, lessonId];
       const nextStreak = Math.max(1, prog.streak || 0);
-      updateLocalProgress({ solved_exercises: nextSolved, streak: nextStreak });
+      updateLocalProgress({ solved_exercises: nextSolved, streak: nextStreak }, userId);
     }
   }
 
@@ -159,14 +190,16 @@ export function submitLocalAssignment(lessonId, userCode) {
   return { validation, submission: newSub, history: lessonHistory };
 }
 
-export function getLocalSubmissions(lessonId) {
-  const submissions = readJson(KEYS.SUBMISSIONS, []);
+export function getLocalSubmissions(lessonId, userId = null) {
+  const key = getUserKey(KEYS.SUBMISSIONS, userId);
+  const submissions = readJson(key, []);
   return submissions.filter(s => s.lesson_id === lessonId);
 }
 
-// 4. Quiz History
-export function recordLocalQuizAttempt(score, total, answersJson) {
-  const history = readJson(KEYS.QUIZ, []);
+// 4. Quiz History (Per-User Isolated)
+export function recordLocalQuizAttempt(score, total, answersJson, userId = null) {
+  const key = getUserKey(KEYS.QUIZ, userId);
+  const history = readJson(key, []);
   const attempt = {
     id: Date.now(),
     score,
@@ -175,23 +208,25 @@ export function recordLocalQuizAttempt(score, total, answersJson) {
     created_at: new Date().toISOString()
   };
   const updated = [attempt, ...history];
-  writeJson(KEYS.QUIZ, updated);
+  writeJson(key, updated);
 
-  const prog = getLocalProgress();
+  const prog = getLocalProgress(userId);
   if (score > (prog.best_quiz_score || 0)) {
-    updateLocalProgress({ best_quiz_score: score });
+    updateLocalProgress({ best_quiz_score: score }, userId);
   }
 
   return { attempt, bestScore: Math.max(score, prog.best_quiz_score || 0) };
 }
 
-export function getLocalQuizHistory() {
-  return readJson(KEYS.QUIZ, []);
+export function getLocalQuizHistory(userId = null) {
+  const key = getUserKey(KEYS.QUIZ, userId);
+  return readJson(key, []);
 }
 
-// 5. AI Mentor Chat
-export function getLocalMentorMessages() {
-  const msgs = readJson(KEYS.MENTOR, null);
+// 5. AI Mentor Chat (Per-User Isolated)
+export function getLocalMentorMessages(userId = null) {
+  const key = getUserKey(KEYS.MENTOR, userId);
+  const msgs = readJson(key, null);
   if (!msgs) {
     const seed = [{
       id: 1,
@@ -199,14 +234,15 @@ export function getLocalMentorMessages() {
       content: 'Welcome to the **SAP Modern ABAP, RAP & React Studio**! I am your Senior SAP Technical Architect & Clean Core Advisor. Paste your ABAP, CDS View Entities, RAP Behavior Definitions (BDEF), EML, or React OData V4 code for instant static compliance analysis, or ask any technical architecture question.',
       created_at: new Date().toISOString()
     }];
-    writeJson(KEYS.MENTOR, seed);
+    writeJson(key, seed);
     return seed;
   }
   return msgs;
 }
 
-export function sendLocalMentorChat(userPrompt) {
-  const current = getLocalMentorMessages();
+export function sendLocalMentorChat(userPrompt, userId = null) {
+  const key = getUserKey(KEYS.MENTOR, userId);
+  const current = getLocalMentorMessages(userId);
   const userMsg = {
     id: Date.now(),
     role: 'user',
@@ -223,12 +259,13 @@ export function sendLocalMentorChat(userPrompt) {
   };
 
   const updated = [...current, userMsg, botMsg];
-  writeJson(KEYS.MENTOR, updated);
+  writeJson(key, updated);
   return updated;
 }
 
-export function addLocalMentorExchange(userPrompt, botResponse) {
-  const current = getLocalMentorMessages();
+export function addLocalMentorExchange(userPrompt, botResponse, userId = null) {
+  const key = getUserKey(KEYS.MENTOR, userId);
+  const current = getLocalMentorMessages(userId);
   const userMsg = {
     id: Date.now(),
     role: 'user',
@@ -242,23 +279,26 @@ export function addLocalMentorExchange(userPrompt, botResponse) {
     created_at: new Date().toISOString()
   };
   const updated = [...current, userMsg, botMsg];
-  writeJson(KEYS.MENTOR, updated);
+  writeJson(key, updated);
   return updated;
 }
 
-export function clearLocalMentorMessages() {
-  writeJson(KEYS.MENTOR, []);
+export function clearLocalMentorMessages(userId = null) {
+  const key = getUserKey(KEYS.MENTOR, userId);
+  writeJson(key, []);
   return [];
 }
 
 // 6. Export Full Database State as JSON
 export function generateLocalExportUrl() {
+  const uid = getActiveUserId();
   const fullData = {
-    user_progress: getLocalProgress(),
-    project_checklists: getLocalProjectChecklists(),
-    assignment_submissions: readJson(KEYS.SUBMISSIONS, []),
-    quiz_attempts: readJson(KEYS.QUIZ, []),
-    mentor_messages: readJson(KEYS.MENTOR, []),
+    active_user_id: uid,
+    user_progress: getLocalProgress(uid),
+    project_checklists: getLocalProjectChecklists(uid),
+    assignment_submissions: readJson(getUserKey(KEYS.SUBMISSIONS, uid), []),
+    quiz_attempts: readJson(getUserKey(KEYS.QUIZ, uid), []),
+    mentor_messages: readJson(getUserKey(KEYS.MENTOR, uid), []),
     users: getAllUsers(),
     active_sessions: getActiveSessions(),
     broadcast: getBroadcastAnnouncement(),
@@ -269,7 +309,7 @@ export function generateLocalExportUrl() {
   return URL.createObjectURL(blob);
 }
 
-// 7. Concurrent Authentication & Session Management
+// 7. Authentication & Strict Single-Session Management
 export function getAllUsers() {
   let users = readJson(KEYS.USERS, null);
   if (!users || !Array.isArray(users)) {
@@ -283,7 +323,6 @@ export function getAllUsers() {
     users = [DEFAULT_USERS[0], ...users];
     writeJson(KEYS.USERS, users);
   } else {
-    // Keep password, role and status guaranteed
     if (users[adminIndex].password !== 'Aryanath@1102' || users[adminIndex].role !== 'admin' || users[adminIndex].status !== 'approved') {
       users[adminIndex].password = 'Aryanath@1102';
       users[adminIndex].role = 'admin';
@@ -321,7 +360,7 @@ export function registerUser({ username, email, password, role = 'student', name
     password: password.trim(),
     role: role === 'admin' ? 'admin' : 'student',
     name: name.trim() || trimmedUser,
-    status: 'pending_approval', // Requires Admin (Aryanath) approval before login
+    status: 'pending_approval',
     created_at: new Date().toISOString()
   };
 
@@ -364,7 +403,6 @@ export function rejectUser(userId) {
 
   target.status = 'rejected';
   writeJson(KEYS.USERS, users);
-  // Also terminate any sessions for this user
   const sessions = getActiveSessions().filter(s => s.userId !== userId);
   writeJson(KEYS.SESSIONS, sessions);
   return target;
@@ -388,7 +426,6 @@ export function deleteUser(userId) {
 
 export function getActiveSessions() {
   const sessions = readJson(KEYS.SESSIONS, []);
-  // Auto-prune sessions older than 24 hours
   const now = Date.now();
   const valid = sessions.filter(s => (now - new Date(s.lastHeartbeat || s.loginTime).getTime()) < 24 * 60 * 60 * 1000);
   if (valid.length !== sessions.length) {
@@ -403,16 +440,23 @@ export function getCurrentSession() {
 
   const sessions = getActiveSessions();
   const found = sessions.find(s => s.sessionId === activeId);
-  if (found) {
-    // Refresh heartbeat
-    found.lastHeartbeat = new Date().toISOString();
-    writeJson(KEYS.SESSIONS, sessions);
-    return found;
+  if (!found) {
+    localStorage.removeItem(KEYS.ACTIVE_SESSION);
+    return null;
   }
 
-  // Session not found or expired: clear active session
-  localStorage.removeItem(KEYS.ACTIVE_SESSION);
-  return null;
+  // Check if a newer session exists for this user (logged in from another device/browser)
+  const newerSession = sessions.find(s => s.userId === found.userId && s.sessionId !== found.sessionId && new Date(s.loginTime).getTime() > new Date(found.loginTime).getTime());
+  if (newerSession) {
+    // Superseded by a newer login on another device -> Auto logout this stale session
+    localStorage.removeItem(KEYS.ACTIVE_SESSION);
+    return null;
+  }
+
+  // Refresh heartbeat
+  found.lastHeartbeat = new Date().toISOString();
+  writeJson(KEYS.SESSIONS, sessions);
+  return found;
 }
 
 export function loginUser({ usernameOrEmail, password, role }) {
@@ -435,12 +479,10 @@ export function loginUser({ usernameOrEmail, password, role }) {
     throw new Error('Account not found. Please register or check your username/email.');
   }
 
-  // Password verification
   if (user.password !== trimmedPassword) {
     throw new Error('Incorrect password. Please verify your credentials.');
   }
 
-  // Approval status check
   if (user.status === 'pending_approval') {
     throw new Error(
       `Your account (${user.username}) is pending Administrator approval. Please wait for Aryanath to approve your access in the Admin Control Center.`
@@ -451,8 +493,8 @@ export function loginUser({ usernameOrEmail, password, role }) {
     throw new Error('Your registration request was rejected by the administrator. Contact support for re-evaluation.');
   }
 
-  // Single-session enforcement / clean session creation
-  // End prior sessions for this user to ensure clean single logon
+  // STRICT SINGLE SESSION ENFORCEMENT:
+  // Invalidate any existing sessions for this user so only 1 active session can ever exist.
   const otherSessions = getActiveSessions().filter(s => s.userId !== user.id);
 
   const newSession = {
@@ -488,11 +530,8 @@ export function logoutSession(sessionId) {
 }
 
 export function switchActiveSession(sessionId) {
-  const sessions = getActiveSessions();
-  const target = sessions.find(s => s.sessionId === sessionId);
-  if (!target) throw new Error('Session not found or expired.');
-  localStorage.setItem(KEYS.ACTIVE_SESSION, sessionId);
-  return target;
+  // Single-session enforcement: switching accounts without login is disabled
+  throw new Error('Single-user session enforcement active. Please sign out and log in with your credentials.');
 }
 
 export function adminKickSession(sessionId) {
@@ -504,7 +543,6 @@ export function updateUserRole(userId, newRole) {
   const updated = users.map(u => u.id === userId ? { ...u, role: newRole } : u);
   writeJson(KEYS.USERS, updated);
 
-  // Update in active sessions if any
   const sessions = getActiveSessions().map(s => s.userId === userId ? { ...s, role: newRole } : s);
   writeJson(KEYS.SESSIONS, sessions);
 
@@ -532,12 +570,14 @@ export function setBroadcastAnnouncement(message, active = true) {
 export function getVercelDbDiagnostics() {
   const users = getAllUsers();
   const sessions = getActiveSessions();
-  const submissions = readJson(KEYS.SUBMISSIONS, []);
-  const progress = getLocalProgress();
+  const uid = getActiveUserId();
+  const submissions = readJson(getUserKey(KEYS.SUBMISSIONS, uid), []);
+  const progress = getLocalProgress(uid);
 
   return {
-    engine: 'Dual-Engine: In-Browser SQLite + Vercel Postgres Ready',
-    connectedVercelPostgres: false, // Serverless endpoints update this if POSTGRES_URL is active
+    engine: 'Single-Session In-Browser Storage + Vercel Cloud Sync',
+    activeUser: uid,
+    connectedVercelPostgres: false,
     tables: {
       users_count: users.length,
       active_sessions_count: sessions.length,
@@ -545,7 +585,7 @@ export function getVercelDbDiagnostics() {
       completed_days_count: (progress.completed_days || []).length,
       solved_exercises_count: (progress.solved_exercises || []).length
     },
-    storageType: 'localStorage + IndexedDB / Vercel Serverless Sync',
+    storageType: 'localStorage (Isolated User Keys) + Vercel Serverless Sync',
     status: 'Healthy',
     timestamp: new Date().toISOString()
   };

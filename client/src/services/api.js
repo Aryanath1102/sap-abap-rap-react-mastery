@@ -154,7 +154,29 @@ export async function fetchMentorMessages() {
 }
 
 export async function callGoogleGenerativeApiDirect(content, apiKey) {
-  const key = apiKey || localStorage.getItem('sap_mentor_gemini_key') || '';
+  const key = apiKey || localStorage.getItem('sap_mentor_gemini_key') || (typeof import.meta !== 'undefined' && import.meta.env?.VITE_GEMINI_API_KEY) || '';
+  if (!key) {
+    throw new Error('API key is missing.');
+  }
+
+  // Daily client-side rate limit enforcement (5,000 queries / day)
+  const today = new Date().toISOString().slice(0, 10);
+  let dailyUsage = { date: today, count: 0 };
+  try {
+    const raw = localStorage.getItem('sap_daily_gemma_usage');
+    if (raw) {
+      const parsed = JSON.parse(raw);
+      if (parsed.date === today) dailyUsage = parsed;
+    }
+  } catch {
+    // reset
+  }
+
+  const DAILY_LIMIT = 5000;
+  if (dailyUsage.count >= DAILY_LIMIT) {
+    throw new Error(`Daily rate limit of ${DAILY_LIMIT} queries reached for today (${today}). Resets at 00:00 UTC.`);
+  }
+
   const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
   // Strictly use Gemma 4 31B only
@@ -171,12 +193,13 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
         }]
       };
 
-      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent?key=${encodeURIComponent(key)}`;
+      // For Google Auth keys (starting with AQ.), pass in x-goog-api-key header and NOT in ?key= URL param
+      const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(m)}:generateContent`;
       const response = await fetch(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          'X-goog-api-key': key
+          'x-goog-api-key': key
         },
         body: JSON.stringify(payload)
       });
@@ -184,6 +207,12 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
       const data = await response.json();
       if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
         botText = data.candidates[0].content.parts[0].text;
+        dailyUsage.count++;
+        try {
+          localStorage.setItem('sap_daily_gemma_usage', JSON.stringify(dailyUsage));
+        } catch {
+          // ignore
+        }
         break;
       }
       if (data.error) {
@@ -286,13 +315,24 @@ export function getExportUrl() {
 
 // 7. Concurrent Authentication & Session APIs
 export async function fetchCurrentSession() {
+  const local = getCurrentSession();
+  if (!local) return null;
+
   try {
-    const res = await fetchWithTimeout(`${API_BASE}/auth/session`);
-    if (res.ok) return await res.json();
+    const res = await fetchWithTimeout(`${API_BASE}/auth?action=session&sessionId=${encodeURIComponent(local.sessionId)}`);
+    if (res.ok) {
+      const data = await res.json();
+      if (!data) {
+        // Session was superseded or terminated on another device
+        logoutSession(local.sessionId);
+        return null;
+      }
+      return data;
+    }
   } catch {
     // Local fallback
   }
-  return getCurrentSession();
+  return local;
 }
 
 export async function fetchActiveSessions() {

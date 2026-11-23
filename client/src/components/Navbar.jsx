@@ -108,36 +108,35 @@ export function Navbar({
 
       {/* Right Action Controls */}
       <div className="flex items-center gap-2 shrink-0">
-        {/* Concurrent Logon / User Pill */}
-        <div className="flex items-center gap-1">
-          <button
-            onClick={onOpenAuth}
-            className="flex items-center gap-2 px-3 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-slate-50 dark:hover:bg-slate-700 text-slate-800 dark:text-slate-200 text-xs font-semibold shadow-xs transition"
-            title="Concurrent Sessions & Identity Manager"
-          >
-            <div className="w-5 h-5 rounded-lg bg-sky-600 text-white flex items-center justify-center text-[10px] font-bold">
-              {currentSession?.name ? currentSession.name.charAt(0).toUpperCase() : 'U'}
+        {/* Single Authenticated Learner Profile Badge */}
+        {currentSession && (
+          <div className="flex items-center gap-1.5 bg-slate-100/80 dark:bg-slate-800/80 pl-1.5 pr-2.5 py-1 rounded-2xl border border-slate-200 dark:border-slate-700/80 shadow-xs">
+            <div className="w-6 h-6 rounded-xl bg-gradient-to-tr from-sky-600 to-indigo-600 text-white flex items-center justify-center text-xs font-bold shadow-xs">
+              {currentSession.name ? currentSession.name.charAt(0).toUpperCase() : 'U'}
             </div>
-            <span className="hidden lg:inline max-w-[100px] truncate">
-              {currentSession?.name || 'Log In'}
-            </span>
-            <span className="text-[10px] font-mono px-1.5 py-0.2 rounded-full bg-emerald-100 dark:bg-emerald-950 text-emerald-700 dark:text-emerald-300 font-bold border border-emerald-300 dark:border-emerald-800 flex items-center gap-1">
-              <span className="w-1.5 h-1.5 rounded-full bg-emerald-500 animate-pulse" />
-              <span>{activeSessionsCount}</span>
-            </span>
-          </button>
+            <div className="flex flex-col text-left leading-none">
+              <span className="text-xs font-bold text-slate-900 dark:text-white max-w-[120px] truncate">
+                {currentSession.name}
+              </span>
+              <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400 capitalize">
+                {currentSession.role || 'Student'}
+              </span>
+            </div>
+          </div>
+        )}
 
-          {onLogout && (
-            <button
-              onClick={onLogout}
-              className="p-2 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/50 text-slate-500 hover:text-rose-600 dark:hover:text-rose-400 shadow-xs transition"
-              title="Sign Out / Terminate Session"
-              aria-label="Sign Out"
-            >
-              <LogOut className="w-3.5 h-3.5" />
-            </button>
-          )}
-        </div>
+        {/* Direct Sign Out Button */}
+        {onLogout && (
+          <button
+            onClick={onLogout}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 hover:bg-rose-50 dark:hover:bg-rose-950/40 text-slate-600 dark:text-slate-300 hover:text-rose-600 dark:hover:text-rose-400 text-xs font-semibold shadow-xs transition"
+            title="Sign Out / Terminate Active Session"
+            aria-label="Sign Out"
+          >
+            <LogOut className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Sign Out</span>
+          </button>
+        )}
 
         {/* Admin Shortcut */}
         {isAdmin && (
