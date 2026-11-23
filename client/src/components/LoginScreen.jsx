@@ -49,7 +49,7 @@ export function LoginScreen({ onLoginSuccess }) {
       setLoading(true);
       const session = await login({
         usernameOrEmail: usernameOrEmail.trim(),
-        password: password.trim()
+        password: password
       });
       if (session) {
         onLoginSuccess(session);
@@ -80,7 +80,7 @@ export function LoginScreen({ onLoginSuccess }) {
       const res = await register({
         username: regUsername.trim(),
         email: regEmail.trim(),
-        password: regPassword.trim(),
+        password: regPassword,
         name: regName.trim(),
         role: regRole
       });
@@ -107,7 +107,7 @@ export function LoginScreen({ onLoginSuccess }) {
   const handleQuickFillAdmin = () => {
     setActiveTab('login');
     setUsernameOrEmail('Aryanath');
-    setPassword('Aryanath@1102');
+    setPassword('');
     setErrorMsg('');
   };
 
@@ -355,7 +355,7 @@ export function LoginScreen({ onLoginSuccess }) {
             Protected Enterprise Gateway • Single Active Session Enforced
           </p>
           <p className="text-[11px] font-mono font-semibold text-indigo-600 dark:text-indigo-400">
-            SuperAdmin: Aryanath | Password: Aryanath@1102
+            Use your administrator-approved account.
           </p>
         </div>
       </div>

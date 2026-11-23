@@ -49,26 +49,7 @@ export function AuthModal({
 
   if (!isOpen) return null;
 
-  const handleQuickLogin = async (persona) => {
-    setErrorMsg('');
-    setSuccessMsg('');
-    try {
-      setLoading(true);
-      const creds = persona === 'admin'
-        ? { usernameOrEmail: 'Aryanath', password: 'Aryanath@1102' }
-        : { usernameOrEmail: 'developer', password: 'password123' };
-      
-      const sess = await login(creds);
-      onSessionChange(sess);
-      onShowToast?.(`Authenticated as ${sess.name} (${sess.role.toUpperCase()})`, 'success');
-      onClose();
-    } catch (err) {
-      setErrorMsg(err.message || 'Authentication failed');
-      onShowToast?.(err.message, 'error');
-    } finally {
-      setLoading(false);
-    }
-  };
+  const handleQuickLogin = () => setErrorMsg('Enter your approved account credentials below.');
 
   const handleCustomLogin = async (e) => {
     e.preventDefault();
@@ -88,7 +69,7 @@ export function AuthModal({
       setLoading(true);
       const sess = await login({
         usernameOrEmail: loginUser.trim(),
-        password: loginPass.trim()
+        password: loginPass
       });
       onSessionChange(sess);
       onShowToast?.(`Signed in successfully as ${sess.name}`, 'success');
@@ -120,7 +101,7 @@ export function AuthModal({
       const res = await register({
         username: regUsername.trim(),
         email: regEmail.trim(),
-        password: regPassword.trim(),
+        password: regPassword,
         name: regName.trim(),
         role: regRole
       });

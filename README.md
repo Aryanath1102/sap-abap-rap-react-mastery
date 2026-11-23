@@ -200,3 +200,21 @@ The built-in analyzer automatically blocks classic legacy constructs:
 
 ## 📜 License
 MIT License. Built for SAP S/4HANA & BTP ABAP Cloud Practitioners.
+
+SQLite authentication setup
+---------------------------
+Run the Express backend and serve the built client from it. Standalone Vercel API handlers are disabled; they do not provide SQLite persistence.
+
+Set these server environment variables before first startup:
+- ADMIN_USERNAME: initial administrator username
+- ADMIN_EMAIL: administrator email
+- ADMIN_PASSWORD: a unique password of at least 12 characters (no default password)
+- SQLITE_PATH: absolute path on persistent disk, optional; defaults to server/database.sqlite
+- APP_ORIGIN: exact browser origin, e.g. https://your-domain.example (defaults to http://localhost:5173 for Vite development)
+- NODE_ENV=production when deployed behind HTTPS
+
+Run npm run build --prefix client, then npm start. Remove ADMIN_PASSWORD after bootstrapping the first administrator. Register other users through the UI. In Admin > Approvals select the role to grant and approve access. Users remain pending until approval. Rejection, role changes and account deletion revoke existing sessions. Sessions expire after eight hours, and a new login replaces the previous session.
+
+Only SQLite is used for server data. The sql.js backend must run as ONE Node process with persistent disk; do not use clustered processes or ephemeral/serverless storage. Back up database.sqlite. Legacy shared learning records are preserved in their original tables but are not assigned to new users, because their owner cannot be established. Browser-local accounts and plaintext passwords are not imported: register fresh accounts.
+
+Verification: npm test --prefix server. Tests create and remove an isolated temporary SQLite database; they never use your production database.

@@ -1,3 +1,5 @@
+import { AsyncLocalStorage } from 'node:async_hooks';
+import { randomUUID } from 'node:crypto';
 import initSqlJs from 'sql.js';
 import fs from 'fs';
 import path from 'path';
@@ -5,7 +7,7 @@ import { fileURLToPath } from 'url';
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
-const DB_FILE = path.join(__dirname, '..', 'database.sqlite');
+const DB_FILE = process.env.SQLITE_PATH || path.join(__dirname, '..', 'database.sqlite');
 
 let db = null;
 
@@ -15,9 +17,10 @@ function persist() {
   try {
     const data = db.export();
     const buffer = Buffer.from(data);
-    fs.writeFileSync(DB_FILE, buffer);
+    fs.writeFileSync(DB_FILE + '.tmp', buffer);
+    fs.renameSync(DB_FILE + '.tmp', DB_FILE);
   } catch (err) {
-    console.error('Failed to persist SQLite database:', err);
+    throw new Error('Failed to persist SQLite database', { cause: err });
   }
 }
 
@@ -38,6 +41,7 @@ export async function initDatabase() {
     db = new SQL.Database();
   }
 
+  db.run('CREATE TABLE IF NOT EXISTS user_data (user_id TEXT PRIMARY KEY, data TEXT NOT NULL)');
   // Auto-initialize schema
   db.run(`
     CREATE TABLE IF NOT EXISTS user_progress (
@@ -154,177 +158,26 @@ export function runSql(sql, params = []) {
 // DATA ACCESS FUNCTIONS
 // =========================================================================
 
-export function getProgress() {
-  const row = getOne('SELECT * FROM user_progress WHERE id = 1');
-  if (!row) {
-    return {
-      completed_days: [],
-      solved_exercises: [],
-      best_quiz_score: 0,
-      streak: 0,
-      active_theme: 'light',
-      updated_at: new Date().toISOString()
-    };
-  }
-  const completed_days = JSON.parse(row.completed_days || '[]');
-  const solved_exercises = JSON.parse(row.solved_exercises || '[]');
-  
-  // Calculate appropriate streak: if the user hasn't completed any days or exercises, streak is strictly 0
-  let calculatedStreak = 0;
-  if (completed_days.length > 0 || solved_exercises.length > 0) {
-    calculatedStreak = row.streak && row.streak > 0 ? row.streak : Math.max(1, completed_days.length);
-  }
-
-  return {
-    completed_days,
-    solved_exercises,
-    best_quiz_score: row.best_quiz_score || 0,
-    streak: calculatedStreak,
-    active_theme: row.active_theme || 'light',
-    updated_at: row.updated_at
-  };
+export const userContext = new AsyncLocalStorage();
+function userId() { const id = userContext.getStore(); if (!id) throw new Error('Authenticated user required'); return id; }
+function state() {
+  const row = getOne('SELECT data FROM user_data WHERE user_id=?', [userId()]);
+  return row ? JSON.parse(row.data) : { progress: {completed_days:[], solved_exercises:[], best_quiz_score:0, streak:0, active_theme:'light'}, projects:{}, submissions:[], quizzes:[], messages:[] };
 }
-
-export function updateProgress(data) {
-  const current = getProgress();
-  const completed_days = JSON.stringify(data.completed_days !== undefined ? data.completed_days : current.completed_days);
-  const solved_exercises = JSON.stringify(data.solved_exercises !== undefined ? data.solved_exercises : current.solved_exercises);
-  const best_quiz_score = data.best_quiz_score !== undefined ? data.best_quiz_score : current.best_quiz_score;
-  const streak = data.streak !== undefined ? data.streak : current.streak;
-  const active_theme = data.active_theme !== undefined ? data.active_theme : current.active_theme;
-
-  runSql(`
-    UPDATE user_progress
-    SET completed_days = ?,
-        solved_exercises = ?,
-        best_quiz_score = ?,
-        streak = ?,
-        active_theme = ?,
-        updated_at = datetime('now')
-    WHERE id = 1
-  `, [completed_days, solved_exercises, best_quiz_score, streak, active_theme]);
-
-  return getProgress();
-}
-
-export function resetProgress() {
-  runSql(`
-    UPDATE user_progress
-    SET completed_days = '[]',
-        solved_exercises = '[]',
-        best_quiz_score = 0,
-        streak = 1,
-        updated_at = datetime('now')
-    WHERE id = 1
-  `);
-  runSql('DELETE FROM project_checklists');
-  runSql('DELETE FROM assignment_submissions');
-  runSql('DELETE FROM quiz_attempts');
-  return getProgress();
-}
-
-export function getProjectChecklists() {
-  const rows = getAll('SELECT project_id, step_index, completed FROM project_checklists WHERE completed = 1');
-  // Group into { [project_id]: [step_index, ...] }
-  const result = {};
-  for (const r of rows) {
-    if (!result[r.project_id]) result[r.project_id] = [];
-    result[r.project_id].push(r.step_index);
-  }
-  return result;
-}
-
-export function updateProjectStep(projectId, stepIndex, completed) {
-  runSql(`
-    INSERT INTO project_checklists (project_id, step_index, completed)
-    VALUES (?, ?, ?)
-    ON CONFLICT(project_id, step_index) DO UPDATE SET completed = ?
-  `, [projectId, stepIndex, completed ? 1 : 0, completed ? 1 : 0]);
-
-  return getProjectChecklists();
-}
-
-export function addSubmission({ lessonId, userCode, status, architectFeedback }) {
-  runSql(`
-    INSERT INTO assignment_submissions (lesson_id, user_code, status, architect_feedback, submitted_at)
-    VALUES (?, ?, ?, ?, datetime('now'))
-  `, [lessonId, userCode, status, JSON.stringify(architectFeedback)]);
-
-  // If status is passed/solved, also ensure it's marked in user_progress
-  if (status === 'passed') {
-    const prog = getProgress();
-    if (!prog.solved_exercises.includes(lessonId)) {
-      prog.solved_exercises.push(lessonId);
-      updateProgress({ solved_exercises: prog.solved_exercises });
-    }
-  }
-
-  return getSubmissions(lessonId);
-}
-
-export function getSubmissions(lessonId) {
-  const rows = lessonId
-    ? getAll('SELECT * FROM assignment_submissions WHERE lesson_id = ? ORDER BY submitted_at DESC', [lessonId])
-    : getAll('SELECT * FROM assignment_submissions ORDER BY submitted_at DESC');
-
-  return rows.map(r => ({
-    ...r,
-    architect_feedback: r.architect_feedback ? JSON.parse(r.architect_feedback) : null
-  }));
-}
-
-export function recordQuizAttempt({ score, total, answersJson }) {
-  runSql(`
-    INSERT INTO quiz_attempts (score, total, answers_json, created_at)
-    VALUES (?, ?, ?, datetime('now'))
-  `, [score, total, JSON.stringify(answersJson || {})]);
-
-  const prog = getProgress();
-  if (score > prog.best_quiz_score) {
-    updateProgress({ best_quiz_score: score });
-  }
-
-  return getQuizHistory();
-}
-
-export function getQuizHistory() {
-  return getAll('SELECT * FROM quiz_attempts ORDER BY created_at DESC LIMIT 20');
-}
-
-export function getMentorMessages() {
-  return getAll('SELECT id, role, content, created_at FROM mentor_messages ORDER BY created_at ASC');
-}
-
-export function addMentorMessage({ role, content }) {
-  runSql(`
-    INSERT INTO mentor_messages (role, content, created_at)
-    VALUES (?, ?, datetime('now'))
-  `, [role, content]);
-
-  return getMentorMessages();
-}
-
-export function clearMentorMessages() {
-  runSql('DELETE FROM mentor_messages');
-  // Re-add default welcome
-  runSql(`
-    INSERT INTO mentor_messages (role, content, created_at)
-    VALUES ('assistant', 'Chat history cleared. I am ready to review your Modern ABAP / RAP code or answer your architectural questions!', datetime('now'))
-  `);
-  return getMentorMessages();
-}
-
-export function exportAllData() {
-  return {
-    exportDate: new Date().toISOString(),
-    version: '1.0.0',
-    progress: getProgress(),
-    projectChecklists: getProjectChecklists(),
-    submissions: getSubmissions(),
-    quizHistory: getQuizHistory(),
-    mentorMessages: getMentorMessages()
-  };
-}
+function save(s) { runSql('INSERT INTO user_data VALUES (?, ?) ON CONFLICT(user_id) DO UPDATE SET data=excluded.data', [userId(), JSON.stringify(s)]); }
+export function getProgress() { return state().progress; }
+export function updateProgress(data) { const s=state(); for (const k of ['completed_days','solved_exercises','best_quiz_score','streak','active_theme']) if (data[k] !== undefined) s.progress[k]=data[k]; save(s); return s.progress; }
+export function resetProgress() { const s=state(); s.progress={completed_days:[],solved_exercises:[],best_quiz_score:0,streak:0,active_theme:s.progress.active_theme}; s.projects={}; s.submissions=[]; s.quizzes=[]; save(s); return s.progress; }
+export function getProjectChecklists() { return state().projects; }
+export function updateProjectStep(id, step, completed) { const s=state(); const steps=new Set(s.projects[id] || []); completed ? steps.add(step) : steps.delete(step); s.projects[id]=[...steps]; save(s); return s.projects; }
+export function addSubmission({lessonId,userCode,status,architectFeedback}) { const s=state(); s.submissions.unshift({id:randomUUID(),lesson_id:lessonId,user_code:userCode,status,architect_feedback:architectFeedback,submitted_at:new Date().toISOString()}); if(status==='passed' && !s.progress.solved_exercises.includes(lessonId)) s.progress.solved_exercises.push(lessonId); save(s); return getSubmissions(lessonId); }
+export function getSubmissions(id) { return state().submissions.filter(s=>!id || s.lesson_id===id); }
+export function recordQuizAttempt({score,total,answersJson}) { const s=state(); s.quizzes.unshift({id:randomUUID(),score,total,answers_json:JSON.stringify(answersJson),created_at:new Date().toISOString()}); s.progress.best_quiz_score=Math.max(s.progress.best_quiz_score,score); save(s); return s.quizzes; }
+export function getQuizHistory() { return state().quizzes; }
+export function getMentorMessages() { return state().messages; }
+export function addMentorMessage({role,content}) { const s=state(); s.messages.push({id:randomUUID(),role,content,created_at:new Date().toISOString()}); save(s); return s.messages; }
+export function clearMentorMessages() { const s=state(); s.messages=[]; save(s); return []; }
+export function exportAllData() { return {progress:getProgress(),projectChecklists:getProjectChecklists(),submissions:getSubmissions(),quizHistory:getQuizHistory(),mentorMessages:getMentorMessages()}; }
 
 // Track and enforce daily rate limits for AI calls
 export function checkAndIncrementApiUsage(dailyLimit = 5000) {

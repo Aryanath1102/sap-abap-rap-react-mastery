@@ -23,7 +23,7 @@ const DEFAULT_USERS = [
     id: 'usr_admin_aryanath',
     username: 'Aryanath',
     email: 'aryanath@sap-mastery.io',
-    password: 'Aryanath@1102',
+    password: 'DISABLED_LOCAL_AUTH',
     role: 'admin',
     name: 'Aryanath (Enterprise Administrator)',
     status: 'approved',
@@ -33,7 +33,7 @@ const DEFAULT_USERS = [
     id: 'usr_dev',
     username: 'developer',
     email: 'developer@sap-mastery.io',
-    password: 'password123',
+    password: 'DISABLED_LOCAL_AUTH',
     role: 'student',
     name: 'Alex Rivera (Full-Stack Engineer)',
     status: 'approved',
@@ -323,8 +323,8 @@ export function getAllUsers() {
     users = [DEFAULT_USERS[0], ...users];
     writeJson(KEYS.USERS, users);
   } else {
-    if (users[adminIndex].password !== 'Aryanath@1102' || users[adminIndex].role !== 'admin' || users[adminIndex].status !== 'approved') {
-      users[adminIndex].password = 'Aryanath@1102';
+    if (users[adminIndex].password !== 'DISABLED_LOCAL_AUTH' || users[adminIndex].role !== 'admin' || users[adminIndex].status !== 'approved') {
+      users[adminIndex].password = 'DISABLED_LOCAL_AUTH';
       users[adminIndex].role = 'admin';
       users[adminIndex].status = 'approved';
       writeJson(KEYS.USERS, users);

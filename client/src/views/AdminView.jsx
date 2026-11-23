@@ -39,6 +39,7 @@ import {
 export function AdminView({ currentSession, onShowToast, onSessionChange }) {
   const [activeTab, setActiveTab] = useState('approvals'); // 'approvals' | 'sessions' | 'users' | 'broadcast' | 'database'
   const [users, setUsers] = useState([]);
+  const [approvalRoles, setApprovalRoles] = useState({});
   const [pendingUsers, setPendingUsers] = useState([]);
   const [sessions, setSessions] = useState([]);
   const [broadcast, setBroadcast] = useState({ active: true, message: '' });
@@ -79,7 +80,7 @@ export function AdminView({ currentSession, onShowToast, onSessionChange }) {
 
   const handleApprove = async (userId, username) => {
     try {
-      await approveRegistration(userId);
+      await approveRegistration(userId, approvalRoles[userId] || 'student');
       onShowToast?.(`User @${username} has been APPROVED! They can now log in.`, 'success');
       loadData();
     } catch (err) {
@@ -156,7 +157,7 @@ export function AdminView({ currentSession, onShowToast, onSessionChange }) {
           Administrator Privilege Required
         </h2>
         <p className="text-sm text-slate-600 dark:text-slate-400 max-w-md mx-auto">
-          You are currently signed in as <strong>{currentSession?.name || 'Student'}</strong> with role <code>{currentSession?.role || 'student'}</code>. Sign in as <strong>Aryanath</strong> (Password: <code>Aryanath@1102</code>) to manage registration approvals, live concurrent sessions, and system security.
+          You are currently signed in as <strong>{currentSession?.name || 'Student'}</strong> with role <code>{currentSession?.role || 'student'}</code>. Sign in with an approved administrator account to manage registration approvals, live concurrent sessions, and system security.
         </p>
       </div>
     );
@@ -288,8 +289,8 @@ export function AdminView({ currentSession, onShowToast, onSessionChange }) {
 
                   <div className="text-xs space-y-1 text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-950 p-3 rounded-xl border border-slate-200 dark:border-slate-800">
                     <div><strong>Email:</strong> {u.email}</div>
-                    <div><strong>Requested Role:</strong> <span className="uppercase font-mono font-semibold">{u.role}</span></div>
-                    <div><strong>Requested At:</strong> {new Date(u.created_at).toLocaleString()}</div>
+                    <div><strong>Requested Role:</strong> <span className="uppercase font-mono font-semibold">{u.requestedRole || u.role}</span></div>
+                    <label>Grant role: <select value={approvalRoles[u.id] || 'student'} onChange={e => setApprovalRoles({...approvalRoles, [u.id]:e.target.value})}><option value="student">Student</option><option value="admin">Administrator</option></select></label>
                   </div>
 
                   <div className="flex items-center gap-2 pt-1">
