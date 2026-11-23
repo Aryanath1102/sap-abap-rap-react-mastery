@@ -32,12 +32,12 @@ dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
 
-// Helper to call Generative Language API strictly with Gemma 4 31B
+// Helper to call Generative Language API strictly with Gemma 4 26B
 async function callGenerativeLanguageApi(model, apiKey, content) {
   const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-  // Strictly use Gemma 4 31B only
-  const modelsToTry = ['gemma-4-31b-it', 'gemma-4-31b'];
+  // Strictly use Gemma 4 26B only
+  const modelsToTry = ['gemma-4-26b-a4b-it', 'gemma-4-26b-it', 'gemma-4-26b'];
   let lastError = null;
 
   for (const m of modelsToTry) {
@@ -232,11 +232,11 @@ app.post('/api/mentor/chat', async (req, res) => {
         botResponse = `*Notice: Daily API rate limit (${dailyLimit} requests/day) reached. Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
       } else {
         try {
-          const modelName = 'gemma-4-31b-it';
+          const modelName = 'gemma-4-26b-a4b-it';
           botResponse = await callGenerativeLanguageApi(modelName, geminiKey, content);
         } catch (apiError) {
           console.warn('AI proxy error, falling back to built-in Clean Core analyzer:', apiError.message);
-          botResponse = `*Notice: Live Model API proxy (gemma-4-31b) failed (${apiError.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
+          botResponse = `*Notice: Live Model API proxy (gemma-4-26b) failed (${apiError.message}). Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
         }
       }
     } else {
@@ -262,7 +262,7 @@ app.get('/api/mentor/usage', (req, res) => {
       count: usage.count,
       limit: dailyLimit,
       remaining: Math.max(0, dailyLimit - usage.count),
-      model: process.env.GEMINI_MODEL || 'gemma-4-31b'
+      model: process.env.GEMINI_MODEL || 'gemma-4-26b-a4b-it'
     });
   } catch (err) {
     res.status(500).json({ error: err.message });

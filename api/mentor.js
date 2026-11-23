@@ -1,6 +1,6 @@
 /**
- * Vercel Serverless Gemma 4 31B AI Mentor Chat Proxy
- * Configured with Gemma 4 31B model and 5,000 queries/day rate limit.
+ * Vercel Serverless Gemma 4 26B AI Mentor Chat Proxy
+ * Configured with Gemma 4 26B model and 5,000 queries/day rate limit.
  */
 
 // Daily in-memory rate limiter (5,000 requests per day)
@@ -47,10 +47,11 @@ export default async function handler(req, res) {
 
       const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-      // Strictly use Gemma 4 31B only
+      // Strictly use Gemma 4 26B (MoE: gemma-4-26b-a4b-it / gemma-4-26b-it)
       const modelsToTry = [
-        'gemma-4-31b-it',
-        'gemma-4-31b'
+        'gemma-4-26b-a4b-it',
+        'gemma-4-26b-it',
+        'gemma-4-26b'
       ];
 
       let botResponse = '';
@@ -92,7 +93,7 @@ export default async function handler(req, res) {
       }
 
       if (!botResponse) {
-        throw lastErr || new Error('No candidate content received from Gemma 4 31B model');
+        throw lastErr || new Error('No candidate content received from Gemma 4 26B model');
       }
 
       return res.status(200).json({

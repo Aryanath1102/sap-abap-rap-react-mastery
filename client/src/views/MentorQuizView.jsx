@@ -175,7 +175,7 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
                 onChange={(e) => handleSaveApiKey(e.target.value)}
                 placeholder="Gemma / Gemini Key..."
                 className="text-xs pl-8 pr-2 py-1.5 rounded-lg border border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-950 w-36 sm:w-48 focus:outline-none focus:ring-1 focus:ring-sky-500 font-mono"
-                title="If empty, automatically uses your configured Gemma 4 31B server key (with 5,000/day limit) or built-in SAP Architect engine."
+                title="If empty, automatically uses your configured Gemma 4 26B server key (with 5,000/day limit) or built-in SAP Architect engine."
               />
             </div>
 

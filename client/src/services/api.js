@@ -179,8 +179,8 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
 
   const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-  // Strictly use Gemma 4 31B only
-  const models = ['gemma-4-31b-it', 'gemma-4-31b'];
+  // Strictly use Gemma 4 26B (MoE: gemma-4-26b-a4b-it / gemma-4-26b-it)
+  const models = ['gemma-4-26b-a4b-it', 'gemma-4-26b-it', 'gemma-4-26b'];
   let botText = '';
   let lastErr = null;
 
@@ -225,7 +225,7 @@ export async function callGoogleGenerativeApiDirect(content, apiKey) {
   }
 
   if (!botText) {
-    throw lastErr || new Error('No candidate content received from Gemma 4 31B');
+    throw lastErr || new Error('No candidate content received from Gemma 4 26B');
   }
 
   return addLocalMentorExchange(content, botText);
