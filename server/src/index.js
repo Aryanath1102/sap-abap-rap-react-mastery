@@ -1,3 +1,4 @@
+import { databaseDiagnostics } from './databaseDiagnostics.js';
 import { initAuth, mountAuth, requireAuth } from './auth.js';
 import { userContext, databaseHealthy } from './db.js';
 import express from 'express';
@@ -364,7 +365,7 @@ export function initialize() {
 }
 export default async function handler(req,res) {
  try { await initialize(); return app(req,res); }
- catch(e) { console.error('Database initialization failed:',e.code || e.name); return res.status(503).json({error:'Database unavailable. Check the Vercel database configuration.'}); }
+ catch(e) { console.error('Database initialization failed:',JSON.stringify(databaseDiagnostics(e))); return res.status(503).json({error:'Database unavailable. Check the Vercel database configuration.'}); }
 }
 if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
  initialize().then(()=>app.listen(PORT,()=>console.log(`API running on port ${PORT} with MongoDB Atlas`))).catch(e=>{console.error(e.message);process.exitCode=1;});
