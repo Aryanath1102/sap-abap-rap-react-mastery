@@ -1,17 +1,27 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-test('PostgreSQL authentication, production routes and user isolation', async () => {
+import { randomUUID } from 'node:crypto';
+import { MongoClient } from 'mongodb';
+test('MongoDB authentication, production routes and user isolation', async (t) => {
  process.env.NODE_ENV='test';
  process.env.ADMIN_USERNAME='admin'; process.env.ADMIN_PASSWORD='Test-admin-password-123';
- const { PGlite }=await import('@electric-sql/pglite');
- const engine=new PGlite();
- // PGlite is real PostgreSQL in WASM, with one connection. Serialize leases for tests.
- let tail=Promise.resolve();
- async function lease() { let unlock;const previous=tail;tail=new Promise(r=>unlock=r);await previous;return unlock; }
- const query=async(text,params=[])=>text.includes('CREATE TABLE') ? (await engine.exec(text),{rows:[]}) : engine.query(text,params);
- const pool={connect:async()=>{const release=await lease();return {query,release};},query:async(text,params)=>{const release=await lease();try{return await query(text,params);}finally{release();}},end:()=>engine.close()};
+ let mongo;
+ if (!process.env.MONGODB_TEST_URI) {
+  const { MongoMemoryReplSet }=await import('mongodb-memory-server-core');
+  mongo=await MongoMemoryReplSet.create({replSet:{count:1}});
+ }
+ process.env.MONGODB_URI=process.env.MONGODB_TEST_URI || mongo.getUri();
+ const testDatabase=`sap_mastery_test_${randomUUID().replaceAll('-','').slice(0,16)}`;
+ process.env.MONGODB_DB=testDatabase;
+ const cleanup=async()=>{
+  if(mongo) return mongo.stop();
+  const client=new MongoClient(process.env.MONGODB_TEST_URI);
+  try {await client.connect();if(!/^sap_mastery_test_[a-f0-9]{16}$/.test(testDatabase))throw new Error('Unsafe test database');await client.db(testDatabase).dropDatabase();}
+  finally {await client.close();}
+ };
  const db=await import('../src/db.js'); const auth=await import('../src/auth.js');
- await db.initDatabase(pool); await auth.initAuth();
+ t.after(async()=>{await db.closeDatabase();await cleanup();});
+ await db.initDatabase(); await auth.initAuth();
  const {app}=await import('../src/index.js');
  const server=app.listen(0); await new Promise(r=>server.once('listening',r));
  const base=`http://127.0.0.1:${server.address().port}`;
@@ -37,14 +47,14 @@ test('PostgreSQL authentication, production routes and user isolation', async ()
   const own=(await call('/export','GET',undefined,a.cookie)).body;
   assert.equal(own.submissions.length,1);assert.equal(own.quizHistory.length,1);assert.equal(own.mentorMessages.length,2);
   assert.deepEqual(own.progress.completed_days,[1]);assert.deepEqual(own.projectChecklists.demo,[1]);
-  assert.ok(await db.getOne('SELECT data FROM user_data WHERE user_id=?',[a.body.userId]));
+  assert.ok(await db.collection('user_data').findOne({_id:a.body.userId}));
   const isolated=(await call('/export','GET',undefined,b.cookie)).body;
   assert.deepEqual(isolated.progress.completed_days,[]); assert.deepEqual(isolated.mentorMessages,[]); assert.deepEqual(isolated.submissions,[]); assert.deepEqual(isolated.quizHistory,[]); assert.deepEqual(isolated.projectChecklists,{});
   const renewed=await call('/auth/login','POST',{usernameOrEmail:'alice',password:'Strong-password-123'});
   assert.equal((await call('/auth/session','GET',undefined,a.cookie)).status,401);
   assert.equal((await call('/auth/logout','POST',{},renewed.cookie)).status,200);
   assert.equal((await call('/export','GET',undefined,renewed.cookie)).status,401);
-  await db.runSql('UPDATE sessions SET expires_at=0 WHERE id=?',[b.body.sessionId]);
+  await db.collection('sessions').updateOne({sessionId:b.body.sessionId},{$set:{expiresAt:new Date(0)}});
   assert.equal((await call('/export','GET',undefined,b.cookie)).status,401);
   assert.equal((await call('/auth/session','GET',undefined,'sap_session=fake')).status,401);
   const fresh=await call('/auth/login','POST',{usernameOrEmail:'alice',password:'Strong-password-123'});
@@ -59,11 +69,11 @@ test('PostgreSQL authentication, production routes and user isolation', async ()
   assert.equal(await db.checkAuthLimit('test-limit'),false);
   const csrf=await fetch(base+'/api/admin/broadcast',{method:'PUT',headers:{'Content-Type':'application/json',origin:'https://untrusted.invalid',cookie:admin.cookie},body:JSON.stringify({message:'no'})});
   assert.equal(csrf.status,403);
- } finally { await new Promise(r=>server.close(r)); await db.closeDatabase(); }
+ } finally { await new Promise(r=>server.close(r)); }
 });
 
-test('Missing PostgreSQL configuration fails closed', async()=>{
- delete process.env.POSTGRES_URL;delete process.env.DATABASE_URL;
+test('Missing MongoDB configuration fails closed', async()=>{
+ delete process.env.MONGODB_URI;
  const {initDatabase}=await import('../src/db.js');
- await assert.rejects(initDatabase(), /POSTGRES_URL/);
+ await assert.rejects(initDatabase(), /MONGODB_URI/);
 });

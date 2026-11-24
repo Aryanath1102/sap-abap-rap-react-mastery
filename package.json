@@ -16,12 +16,12 @@
   "dependencies": {
     "dotenv": "^16.4.7",
     "express": "^5.1.0",
-    "pg": "^8.16.3",
-    "vite": "^6.0.7"
+    "vite": "^6.0.7",
+    "mongodb": "^6.20.0"
   },
   "devDependencies": {
-    "@electric-sql/pglite": "^0.6.0",
-    "concurrently": "^9.1.2"
+    "concurrently": "^9.1.2",
+    "mongodb-memory-server-core": "^10.3.0"
   },
   "type": "module"
 }

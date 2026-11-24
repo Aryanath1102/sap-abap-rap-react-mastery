@@ -168,7 +168,7 @@ export function DashboardView({ progress, onResetProgress, onNavigate, onShowToa
             <span>cloud Persistent Storage Active</span>
           </div>
           <p className="text-slate-600 dark:text-slate-400 text-[11px] max-w-2xl">
-            All your 14-day milestones, solved exercises, 20-step project checklists, assessment scores, and AI mentor conversations are securely saved into your cloud <code className="bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded font-mono">PostgreSQL</code> database.
+            All your 14-day milestones, solved exercises, 20-step project checklists, assessment scores, and AI mentor conversations are securely saved into your cloud <code className="bg-white/80 dark:bg-slate-900 px-1 py-0.5 rounded font-mono">MongoDB Atlas</code> database.
           </p>
         </div>
 

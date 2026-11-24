@@ -2,7 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import { readFile } from 'node:fs/promises';
 
-test('Vercel routes current and legacy API entry points to PostgreSQL', async () => {
+test('Vercel routes current and legacy API entry points to MongoDB', async () => {
  const config=JSON.parse(await readFile(new URL('../../vercel.json',import.meta.url),'utf8'));
  assert.equal(config.rewrites[0].source,'/api/:path*');
  assert.equal(config.rewrites[0].destination,'/api/index');

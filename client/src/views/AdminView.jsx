@@ -548,10 +548,10 @@ export function AdminView({ currentSession, onShowToast, onSessionChange }) {
           <div className="p-6 rounded-3xl bg-indigo-50/70 dark:bg-indigo-950/30 border border-indigo-200 dark:border-indigo-900/50 space-y-3">
             <div className="flex items-center gap-2 text-sm font-bold text-indigo-900 dark:text-indigo-300">
               <Database className="w-4 h-4 text-indigo-600" />
-              <span>Vercel Database Integration (Vercel Postgres / Storage Architecture)</span>
+              <span>Vercel Database Integration (MongoDB Atlas / Storage Architecture)</span>
             </div>
             <p className="text-xs sm:text-sm text-slate-700 dark:text-slate-300 leading-relaxed font-sans">
-              Users, sessions, approvals, progress, assignments, quizzes, mentor conversations, and announcements are stored in the connected PostgreSQL database.
+              Users, sessions, approvals, progress, assignments, quizzes, mentor conversations, and announcements are stored in the connected MongoDB Atlas database.
             </p>
             <p className="text-xs text-slate-600 dark:text-slate-400">
               Database availability is required for sign-in and saved work. Browser storage is not used as a database fallback.

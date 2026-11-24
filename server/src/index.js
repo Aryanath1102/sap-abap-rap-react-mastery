@@ -1,5 +1,5 @@
 import { initAuth, mountAuth, requireAuth } from './auth.js';
-import { userContext, getOne } from './db.js';
+import { userContext, databaseHealthy } from './db.js';
 import express from 'express';
 import dotenv from 'dotenv';
 import path from 'path';
@@ -126,13 +126,13 @@ app.use(express.json({ limit: '5mb' }));
 
 // Health Check
 app.get('/api/health', async (req, res) => {
-  res.json({ status: 'ok', database: 'postgresql', revision: process.env.VERCEL_GIT_COMMIT_SHA || 'local', service: 'SAP Modern ABAP, RAP & React Studio API', timestamp: new Date() });
+  res.json({ status: 'ok', database: 'mongodb', revision: process.env.VERCEL_GIT_COMMIT_SHA || 'local', service: 'SAP Modern ABAP, RAP & React Studio API', timestamp: new Date() });
 });
 
 mountAuth(app);
 app.use('/api', requireAuth, (req,res,next) => userContext.run(req.user.id, next));
 
-app.get('/api/db-status', async (req,res) => { await getOne('SELECT 1 AS ok'); res.json({connected:true,engine:'PostgreSQL'}); });
+app.get('/api/db-status', async (req,res) => { await databaseHealthy(); res.json({connected:true,engine:'MongoDB Atlas'}); });
 
 // 1. User Progress Endpoints
 app.get('/api/progress', async (req, res) => {
@@ -197,7 +197,7 @@ app.post('/api/assignments/submit', async (req, res) => {
     // Run automated Clean Core / Modern ABAP static analyzer
     const validation = validateAssignment(lessonId, userCode);
 
-    // Save to PostgreSQL
+    // Save to MongoDB Atlas
     const history = await addSubmission({
       lessonId,
       assignmentId,
@@ -355,7 +355,7 @@ if (fs.existsSync(clientDistPath)) {
 app.use((err,req,res,next) => {
   if (res.headersSent) return next(err);
   console.error('API request failed:', err.code || err.name);
-  res.status(err.code === '23505' ? 409 : 503).json({error:err.code === '23505' ? 'Account already exists.' : 'Service temporarily unavailable.'});
+  res.status(err.code === 11000 ? 409 : 503).json({error:err.code === 11000 ? 'Account already exists.' : 'Service temporarily unavailable.'});
 });
 let ready;
 export function initialize() {
@@ -367,5 +367,5 @@ export default async function handler(req,res) {
  catch(e) { console.error('Database initialization failed:',e.code || e.name); return res.status(503).json({error:'Database unavailable. Check the Vercel database configuration.'}); }
 }
 if (!process.env.VERCEL && process.env.NODE_ENV !== 'test') {
- initialize().then(()=>app.listen(PORT,()=>console.log(`API running on port ${PORT} with PostgreSQL`))).catch(e=>{console.error(e.message);process.exitCode=1;});
+ initialize().then(()=>app.listen(PORT,()=>console.log(`API running on port ${PORT} with MongoDB Atlas`))).catch(e=>{console.error(e.message);process.exitCode=1;});
 }

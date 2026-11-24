@@ -1,18 +1,28 @@
-> **Current deployment:** Vercel frontend + Vercel API function + connected PostgreSQL. All application records now use PostgreSQL. Earlier references below to SQLite/browser fallback describe the original prototype, not the current runtime.
+# SAP Mastery Hub deployment
 
-## Vercel database setup
+The frontend and API run on Vercel. All application database records use MongoDB Atlas: users, hashed passwords, approval status, sessions, learning progress, assignments, quizzes, mentor conversations, announcements and rate limits. There is no PostgreSQL, SQLite or browser database fallback.
 
-1. Attach a PostgreSQL integration (for example Neon) to this Vercel project. Set its pooled connection string as `POSTGRES_URL` or `DATABASE_URL` in the deployment environment. Do not prefix database secrets with `VITE_`.
-2. Set `ADMIN_USERNAME`, `ADMIN_EMAIL`, and a unique `ADMIN_PASSWORD` of at least 12 characters for first deployment. Remove `ADMIN_PASSWORD` after the first administrator is created. There are no default passwords.
-3. Set `APP_ORIGIN` to the exact public origin, for example `https://your-project.vercel.app`. Set it separately for preview deployments if browser access is needed. Set `GEMINI_API_KEY` for live mentor responses.
-4. Deploy with the repository's `vercel.json`: install root dependencies, build the Vite client, route `/api/*` through `api/index.js`.
-5. Sign in, then use Admin > Approvals to approve pending users and explicitly select student or administrator access. Admin > Vercel Database checks a real database query.
+## Environment variables
 
-Schema creation is idempotent and serialized across cold starts. Users, password hashes, approvals, sessions, user-scoped progress/checklists/submissions/quizzes/chat history, announcements, AI usage and login rate limits all live in PostgreSQL. Learning records are grouped per user in the `user_data` table; row-locked transactions prevent simultaneous updates from overwriting each other. Unavailable databases fail closed rather than accepting browser sessions.
+- `MONGODB_URI`: Atlas driver connection URI with the database user's credentials. This is a server secret, never a `VITE_` variable.
+- `MONGODB_DB`: database name, defaults to `sap_mastery`.
+- `ADMIN_USERNAME`, `ADMIN_EMAIL`, `ADMIN_PASSWORD`: initial app administrator. Supply the chosen password through Vercel secrets; it is hashed before storage. No password is embedded in source. Password must have at least 12 characters. These variables create the administrator only on a new database; changing them does not reset an existing account.
+- `APP_ORIGIN`: optional explicit browser origin. When unset, same-origin requests to the current deployment are accepted. Local Vite development uses `http://localhost:5173`.
+- `GEMINI_API_KEY`: server-side Google API key for live mentor responses.
+- `DAILY_RATE_LIMIT`: maximum daily AI requests, defaults to 5000.
 
-Old `sap_users`, `sap_sessions`, and `sap_progress` tables are left untouched. They lack trustworthy password hashes and/or ownership. Old browser accounts must register again; old sessions are deliberately not imported. No production data migration has been run by these code changes.
+Import your private environment file into Vercel Production, then deploy `main`. The repository's `vercel.json` configures installation, build and API routing. PostgreSQL variables are ignored by this version. Remove `ADMIN_PASSWORD` after successful administrator creation and redeploy; your login continues to work.
 
-Local development also requires PostgreSQL. Copy `.env.example` to `.env`, fill in the connection and administrator settings, then run `npm install`, `npm run dev`. Tests use isolated PostgreSQL via PGlite, not the live database: `npm test --prefix server`. Run `npm run build --prefix client` to build the frontend.
+## Atlas connectivity
+
+Use Atlas Connect > Drivers to obtain the Node.js connection URI. Atlas Network Access must permit connections from the deployed Vercel backend; adding only your laptop's IP does not authorize Vercel. Use the Atlas/Vercel integration or configure access for your deployment's outbound network. Database credentials and app login credentials are separate. Rotate database credentials exposed in screenshots before production use.
+
+The backend reuses a MongoClient across warm invocations. Unique indexes prevent duplicate accounts, sessions expire after eight hours, and changing roles/status revokes sessions. Transactions protect concurrent learning-data updates and account deletion. Transactions require a replica set (Atlas supports this). Existing PostgreSQL records are not automatically copied; old data remains untouched.
+
+## Development and checks
+
+Run `npm install`, configure `.env` from `.env.example`, then `npm run dev`. Run `npm run build --prefix client` for the frontend. Run `npm test --prefix server` for API/authentication tests against an isolated temporary MongoDB replica set. The first test run downloads the MongoDB test binary; by default tests do not connect to Atlas. Alternatively set `MONGODB_TEST_URI` to run against a uniquely named disposable database on a test cluster; that test database is dropped afterward.
+
 
 # SAP Modern ABAP, RAP & React Mastery Studio 🔷
 
