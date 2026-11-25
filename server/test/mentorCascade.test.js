@@ -1,6 +1,13 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_CASCADE, CASCADE_SUMMARY, SYSTEM_INSTRUCTION, extractCandidateText, callGenerativeLanguageApi } from '../src/aiMentor.js';
+import {
+  MODEL_CASCADE,
+  CASCADE_SUMMARY,
+  SYSTEM_INSTRUCTION,
+  INTERACTIONS_URL,
+  extractInteractionText,
+  callGenerativeLanguageApi
+} from '../src/aiMentor.js';
 
 const noopSleep = async () => {};
 
@@ -27,33 +34,40 @@ test('MODEL_CASCADE prioritizes Gemma 4 26B followed by Gemini Flash-Lite fallba
 });
 
 test('callGenerativeLanguageApi retries Gemma 4 26B on overload and falls back to Gemini 3.5 Flash-Lite', async () => {
-  const calledUrls = [];
-  const fakeFetch = async (url) => {
-    calledUrls.push(url);
-    if (url.includes('gemma-4-26b-a4b-it')) {
+  const calledModels = [];
+  const fakeFetch = async (url, init) => {
+    assert.equal(url, INTERACTIONS_URL);
+    const body = JSON.parse(init.body);
+    calledModels.push(body.model);
+
+    if (body.model === 'gemma-4-26b-a4b-it') {
       return jsonResponse({ error: { code: 503, message: 'Service overloaded' } }, 503);
     }
-    if (url.includes('gemini-3.5-flash-lite')) {
-      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Answer from 3.5 Flash-Lite' }] } }] });
+    if (body.model === 'gemini-3.5-flash-lite') {
+      return jsonResponse({
+        steps: [{ type: 'model_output', content: [{ type: 'text', text: 'Answer from 3.5 Flash-Lite' }] }]
+      });
     }
-    throw new Error(`Unexpected model URL: ${url}`);
+    throw new Error(`Unexpected model: ${body.model}`);
   };
 
   const res = await callGenerativeLanguageApi('test-key', 'Explain EML', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
   assert.equal(res.modelId, 'gemini-3.5-flash-lite');
   assert.equal(res.tier, 'fallback');
   assert.equal(res.text, 'Answer from 3.5 Flash-Lite');
-  assert.equal(calledUrls.filter((u) => u.includes('gemma-4-26b-a4b-it')).length, 3);
-  assert.equal(calledUrls.filter((u) => u.includes('gemini-3.5-flash-lite')).length, 1);
+  assert.equal(calledModels.filter((m) => m === 'gemma-4-26b-a4b-it').length, 3);
+  assert.equal(calledModels.filter((m) => m === 'gemini-3.5-flash-lite').length, 1);
 });
 
 test('callGenerativeLanguageApi falls back to Gemini 3.1 Flash-Lite when earlier models fail', async () => {
   const calledModels = [];
-  const fakeFetch = async (url) => {
-    const model = url.match(/models\/([^:]+):/)?.[1];
-    calledModels.push(model);
-    if (model === 'gemini-3.1-flash-lite') {
-      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Answer from 3.1 Flash-Lite' }] } }] });
+  const fakeFetch = async (_url, init) => {
+    const body = JSON.parse(init.body);
+    calledModels.push(body.model);
+    if (body.model === 'gemini-3.1-flash-lite') {
+      return jsonResponse({
+        outputs: [{ type: 'text', text: 'Answer from 3.1 Flash-Lite' }]
+      });
     }
     return jsonResponse({ error: { code: 404, message: 'Model not found' } }, 404);
   };
@@ -79,44 +93,50 @@ test('callGenerativeLanguageApi fails fast on invalid API key without retrying',
   assert.equal(calls, 1);
 });
 
-test('SYSTEM_INSTRUCTION enforces WhatsApp Level 1/Level 2 format and is sent in request payload', async () => {
-  assert.match(SYSTEM_INSTRUCTION, /Apply this exact structure and clean WhatsApp-style formatting to EVERY question/);
-  assert.match(SYSTEM_INSTRUCTION, /Be precise, direct, and strictly to the point/);
-  assert.match(SYSTEM_INSTRUCTION, /\*Level 1: The Simple Picture\*/);
-  assert.match(SYSTEM_INSTRUCTION, /\*Level 2: SAP Technical Deep Dive\*/);
-  assert.match(SYSTEM_INSTRUCTION, /```abap[\s\S]*```$/);
+test('SYSTEM_INSTRUCTION avoids Level 1/Level 2 and sends separated system_instruction via Interactions API', async () => {
+  assert.doesNotMatch(SYSTEM_INSTRUCTION, /Level 1|Level 2/i);
+  assert.match(SYSTEM_INSTRUCTION, /Return ONLY the final answer/);
+  assert.match(SYSTEM_INSTRUCTION, /in 2 lines/);
 
   let capturedBody;
-  const fakeFetch = async (_url, init) => {
+  const fakeFetch = async (url, init) => {
+    assert.equal(url, INTERACTIONS_URL);
+    assert.equal(init.headers['Api-Revision'], '2026-05-20');
     capturedBody = JSON.parse(init.body);
-    return jsonResponse({ candidates: [{ content: { parts: [{ text: '*Level 1: The Simple Picture*\nOk' }] } }] });
+    return jsonResponse({
+      steps: [{ type: 'model_output', content: [{ type: 'text', text: 'RAP builds cloud-ready OData V4 services.' }] }]
+    });
   };
 
-  await callGenerativeLanguageApi('test-key', 'What is EML?', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
-  const promptText = capturedBody.contents[0].parts[0].text;
-  assert.ok(promptText.includes(SYSTEM_INSTRUCTION));
-  assert.ok(promptText.includes('[USER QUESTION]\nWhat is EML?'));
+  await callGenerativeLanguageApi('test-key', 'what is RAP? in 2 lines', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
+  assert.equal(capturedBody.model, 'gemma-4-26b-a4b-it');
+  assert.equal(capturedBody.input, 'what is RAP? in 2 lines');
+  assert.equal(capturedBody.system_instruction, SYSTEM_INSTRUCTION);
+  assert.equal(capturedBody.store, false);
 });
 
-test('extractCandidateText ignores Gemma thinking parts and returns only final answer text', async () => {
-  const responseBody = {
-    candidates: [{
-      content: {
-        parts: [
-          { thought: true, text: '*   *Level 1:* Let me think step by step... Wait, looking at the prompt again...' },
-          { text: '*Level 1: The Simple Picture*\nDraft stores incomplete edits safely.' }
-        ]
-      }
-    }]
+test('extractInteractionText strips thought steps/outputs and returns only final text', async () => {
+  const stepsPayload = {
+    steps: [
+      { type: 'thought', summary: [{ type: 'text', text: 'User Question: what is RAP? Self-Correction...' }] },
+      { type: 'model_output', content: [{ type: 'text', text: '*RAP* builds cloud-ready OData V4 services in ABAP Cloud.' }] }
+    ]
   };
-
   assert.equal(
-    extractCandidateText(responseBody),
-    '*Level 1: The Simple Picture*\nDraft stores incomplete edits safely.'
+    extractInteractionText(stepsPayload),
+    '*RAP* builds cloud-ready OData V4 services in ABAP Cloud.'
   );
 
-  const fakeFetch = async () => jsonResponse(responseBody);
-  const res = await callGenerativeLanguageApi('test-key', 'Draft', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
-  assert.equal(res.text.includes('Let me think'), false);
-  assert.equal(res.text, '*Level 1: The Simple Picture*\nDraft stores incomplete edits safely.');
+  const outputsPayload = {
+    outputs: [
+      { type: 'thought', text: 'Internal reasoning...' },
+      { type: 'text', text: 'Clean 2-line answer.' }
+    ]
+  };
+  assert.equal(extractInteractionText(outputsPayload), 'Clean 2-line answer.');
+
+  const fakeFetch = async () => jsonResponse(stepsPayload);
+  const res = await callGenerativeLanguageApi('test-key', 'what is RAP? in 2 lines', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
+  assert.equal(res.text.includes('Self-Correction'), false);
+  assert.equal(res.text, '*RAP* builds cloud-ready OData V4 services in ABAP Cloud.');
 });

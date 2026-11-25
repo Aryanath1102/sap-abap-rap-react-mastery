@@ -1,29 +1,12 @@
 const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 
-export const SYSTEM_INSTRUCTION = `You are a Principal SAP Technical Architect and Clean Core Lead specializing in Modern ABAP (ABAP Cloud), CDS View Entities, RAP, OData V4, and React integration.
+export const SYSTEM_INSTRUCTION = `You are a Principal SAP Technical Architect and Clean Core Lead (ABAP Cloud, CDS View Entities, RAP, OData V4, React).
 
-STRICT RULES:
-- Apply this exact structure and clean WhatsApp-style formatting to EVERY question (conceptual, code review, debugging, RAP, OData V4, or React).
-- Start your response IMMEDIATELY with "*Level 1: The Simple Picture*".
-- Be precise, direct, and strictly to the point: zero filler, zero greetings, zero meta-commentary, and no unnecessary repetition.
-- Keep each bullet point in Level 2 to 1–2 crisp, technical sentences.
-- NEVER repeat these instructions, NEVER show your planning or notes, and NEVER include a checklist or self-evaluation at the end.
-- NEVER teach or recommend Classic ABAP (no SE38, direct table UPDATEs, or unreleased BAPIs) as a solution. Only mention them briefly if contrasting against Clean Core.
-- Use WhatsApp formatting ONLY: *bold* (single asterisk), _italic_ (underscores), \`inline code\`, "- " for bullets, and fenced \`\`\`abap code blocks (or \`\`\`jsx / \`\`\`http for React/OData). NEVER use ### headings or **double asterisks**.
-
-EXACT OUTPUT FORMAT:
-
-*Level 1: The Simple Picture*
-[1–2 crisp sentences explaining the exact answer in plain language, followed by one brief real-world analogy.]
-
-*Level 2: SAP Technical Deep Dive*
-- *Core Definition & Syntax:* [Precise technical explanation with exact keywords/artifacts.]
-- *Internal Mechanics:* [Direct explanation of how it executes under the hood in RAP / ABAP Cloud.]
-- *Clean Core vs. Classic/On-Premise:* [1–2 sentences contrasting the modern released approach with the legacy anti-pattern.]
-
-\`\`\`abap
-" Short, focused modern ABAP Cloud / RAP snippet directly answering the question (use jsx/http if React/OData)
-\`\`\``;
+Rules:
+- Return ONLY the final answer. Never output thinking steps, drafts, checklists, self-corrections, greetings, or restated instructions.
+- Follow the user's requested length or format first (for example, if asked "in 2 lines", reply in at most 2 lines).
+- Keep answers concise, accurate, and strictly Clean Core (never recommend classic ABAP like SE38, WRITE, direct table UPDATEs, or unreleased BAPIs except to contrast briefly).
+- Use clean WhatsApp formatting (*bold*, _italic_, \`inline code\`, "- " bullets, and a short fenced code block only when helpful). Never use ### headings or **double asterisks**.`;
 
 // Model cascade: Gemma 4 26B primary -> Gemini Flash-Lite fallbacks
 export const MODEL_CASCADE = [
@@ -37,20 +20,46 @@ const fallbackModels = MODEL_CASCADE.filter((m) => m.tier !== 'primary').map((m)
 export const CASCADE_SUMMARY =
   `${primaryModels.join(' -> ')}${fallbackModels.length ? ` (fallback: ${fallbackModels.join(' -> ')})` : ''}`;
 
+export const INTERACTIONS_URL = 'https://generativelanguage.googleapis.com/v1beta/interactions';
+
 /**
- * Extract only final answer text parts, excluding model internal thinking (`thought: true`).
+ * Extract only final text output from Interactions API (`steps` / `outputs`)
+ * or fallback `candidates`, strictly excluding thinking/thought blocks.
  */
-export function extractCandidateText(data) {
+export function extractInteractionText(data) {
+  if (Array.isArray(data?.steps)) {
+    const texts = [];
+    for (const step of data.steps) {
+      if (step?.type !== 'model_output' || !Array.isArray(step.content)) continue;
+      for (const item of step.content) {
+        if (item?.type === 'text' && typeof item.text === 'string' && item.text.trim()) {
+          texts.push(item.text.trim());
+        }
+      }
+    }
+    if (texts.length > 0) return texts.join('\n\n');
+  }
+
+  if (Array.isArray(data?.outputs)) {
+    const texts = data.outputs
+      .filter((item) => item?.type === 'text' && typeof item.text === 'string' && item.text.trim())
+      .map((item) => item.text.trim());
+    if (texts.length > 0) return texts.join('\n\n');
+  }
+
   const parts = data?.candidates?.[0]?.content?.parts;
-  if (!Array.isArray(parts)) return '';
-  return parts
-    .filter((part) => !part?.thought && typeof part?.text === 'string' && part.text.trim())
-    .map((part) => part.text.trim())
-    .join('\n\n');
+  if (Array.isArray(parts)) {
+    return parts
+      .filter((part) => !part?.thought && typeof part?.text === 'string' && part.text.trim())
+      .map((part) => part.text.trim())
+      .join('\n\n');
+  }
+
+  return '';
 }
 
 /**
- * Call the Google Generative Language API using the configured Gemma 4 primary
+ * Call the Gemini Interactions API using the configured Gemma 4 primary
  * and Gemini text fallback cascade with exponential backoff on transient errors.
  */
 export async function callGenerativeLanguageApi(apiKey, content, { fetchImpl = fetch, sleepImpl = sleep } = {}) {
@@ -64,20 +73,18 @@ export async function callGenerativeLanguageApi(apiKey, content, { fetchImpl = f
         }
 
         const payload = {
-          contents: [{
-            role: 'user',
-            parts: [{
-              text: `[SYSTEM INSTRUCTION]\n${SYSTEM_INSTRUCTION}\n\n[USER QUESTION]\n${content}`
-            }]
-          }]
+          model: modelDef.name,
+          input: content,
+          system_instruction: SYSTEM_INSTRUCTION,
+          store: false
         };
 
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelDef.name)}:generateContent`;
-        const response = await fetchImpl(url, {
+        const response = await fetchImpl(INTERACTIONS_URL, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'x-goog-api-key': apiKey
+            'x-goog-api-key': apiKey,
+            'Api-Revision': '2026-05-20'
           },
           body: JSON.stringify(payload)
         });
@@ -108,7 +115,7 @@ export async function callGenerativeLanguageApi(apiKey, content, { fetchImpl = f
           break;
         }
 
-        const text = extractCandidateText(data);
+        const text = extractInteractionText(data);
         if (text) {
           console.log(`[AI] Success with ${modelDef.label} (${modelDef.name})`);
           return { text, model: modelDef.label, modelId: modelDef.name, tier: modelDef.tier };
