@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_CASCADE, CASCADE_SUMMARY, SYSTEM_INSTRUCTION, callGenerativeLanguageApi } from '../src/aiMentor.js';
+import { MODEL_CASCADE, CASCADE_SUMMARY, SYSTEM_INSTRUCTION, extractCandidateText, callGenerativeLanguageApi } from '../src/aiMentor.js';
 
 const noopSleep = async () => {};
 
@@ -79,21 +79,44 @@ test('callGenerativeLanguageApi fails fast on invalid API key without retrying',
   assert.equal(calls, 1);
 });
 
-test('SYSTEM_INSTRUCTION enforces Level 1 and Level 2 format and is sent in request payload', async () => {
-  assert.match(SYSTEM_INSTRUCTION, /Apply this exact structure and clean formatting to EVERY question/);
+test('SYSTEM_INSTRUCTION enforces WhatsApp Level 1/Level 2 format and is sent in request payload', async () => {
+  assert.match(SYSTEM_INSTRUCTION, /Apply this exact structure and clean WhatsApp-style formatting to EVERY question/);
   assert.match(SYSTEM_INSTRUCTION, /Be precise, direct, and strictly to the point/);
-  assert.match(SYSTEM_INSTRUCTION, /### Level 1: The Simple Picture/);
-  assert.match(SYSTEM_INSTRUCTION, /### Level 2: SAP Technical Deep Dive/);
+  assert.match(SYSTEM_INSTRUCTION, /\*Level 1: The Simple Picture\*/);
+  assert.match(SYSTEM_INSTRUCTION, /\*Level 2: SAP Technical Deep Dive\*/);
   assert.match(SYSTEM_INSTRUCTION, /```abap[\s\S]*```$/);
 
   let capturedBody;
   const fakeFetch = async (_url, init) => {
     capturedBody = JSON.parse(init.body);
-    return jsonResponse({ candidates: [{ content: { parts: [{ text: '### Level 1: The Simple Picture\nOk' }] } }] });
+    return jsonResponse({ candidates: [{ content: { parts: [{ text: '*Level 1: The Simple Picture*\nOk' }] } }] });
   };
 
   await callGenerativeLanguageApi('test-key', 'What is EML?', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
   const promptText = capturedBody.contents[0].parts[0].text;
   assert.ok(promptText.includes(SYSTEM_INSTRUCTION));
   assert.ok(promptText.includes('[USER QUESTION]\nWhat is EML?'));
+});
+
+test('extractCandidateText ignores Gemma thinking parts and returns only final answer text', async () => {
+  const responseBody = {
+    candidates: [{
+      content: {
+        parts: [
+          { thought: true, text: '*   *Level 1:* Let me think step by step... Wait, looking at the prompt again...' },
+          { text: '*Level 1: The Simple Picture*\nDraft stores incomplete edits safely.' }
+        ]
+      }
+    }]
+  };
+
+  assert.equal(
+    extractCandidateText(responseBody),
+    '*Level 1: The Simple Picture*\nDraft stores incomplete edits safely.'
+  );
+
+  const fakeFetch = async () => jsonResponse(responseBody);
+  const res = await callGenerativeLanguageApi('test-key', 'Draft', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
+  assert.equal(res.text.includes('Let me think'), false);
+  assert.equal(res.text, '*Level 1: The Simple Picture*\nDraft stores incomplete edits safely.');
 });

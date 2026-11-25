@@ -14,6 +14,7 @@ import {
   ShieldAlert
 } from 'lucide-react';
 import { QUIZ_DATA } from '../data/quizData';
+import { ChatMessageContent } from '../components/ChatMessageContent';
 import {
   fetchMentorMessages,
   sendMentorMessage,
@@ -181,13 +182,13 @@ export function MentorQuizView({ bestQuizScore, onQuizUpdated, onShowToast }) {
                 )}
 
                 <div
-                  className={`max-w-[85%] text-xs sm:text-sm p-4 rounded-2xl leading-relaxed whitespace-pre-wrap ${
+                  className={`max-w-[85%] text-xs sm:text-sm p-4 rounded-2xl leading-relaxed ${
                     isUser
                       ? 'bg-sky-600 text-white rounded-tr-xs shadow-xs'
                       : 'bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 rounded-tl-xs border border-slate-200 dark:border-slate-700/80 shadow-xs'
                   }`}
                 >
-                  {displayContent}
+                  <ChatMessageContent content={displayContent} isUser={isUser} />
                 </div>
 
                 {isUser && (
