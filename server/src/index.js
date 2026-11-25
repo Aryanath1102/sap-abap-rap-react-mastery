@@ -190,7 +190,8 @@ app.post('/api/mentor/chat', async (req, res) => {
           const result = await callGenerativeLanguageApi(geminiKey, content);
           botResponse = result.text;
           if (result.tier !== 'primary') {
-            botResponse = `*[Powered by ${result.model} — Gemma 4 31B and 26B were temporarily unavailable]*\n\n` + botResponse;
+            const primaryLabels = MODEL_CASCADE.filter((m) => m.tier === 'primary').map((m) => m.label).join(' / ');
+            botResponse = `*[Powered by ${result.model} — ${primaryLabels} temporarily unavailable]*\n\n` + botResponse;
           }
         } catch (apiError) {
           console.warn('AI proxy error, falling back to built-in Clean Core analyzer:', apiError.message);

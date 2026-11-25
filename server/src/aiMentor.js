@@ -3,17 +3,17 @@ const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
 export const SYSTEM_INSTRUCTION =
   'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
 
-// Model cascade: Gemma 4 31B & 26B primary -> Gemini 4 / 3 text fallbacks
+// Model cascade: Gemma 4 26B primary -> Gemini Flash-Lite fallbacks
 export const MODEL_CASCADE = [
-  { name: 'gemma-4-31b-it', retries: 2, label: 'Gemma 4 31B', tier: 'primary' },
   { name: 'gemma-4-26b-a4b-it', retries: 2, label: 'Gemma 4 26B', tier: 'primary' },
-  { name: 'gemini-4-hydrogen', retries: 2, label: 'Gemini 4 Hydrogen', tier: 'fallback' },
-  { name: 'gemini-3.8-flash', retries: 2, label: 'Gemini 3.8 Flash', tier: 'fallback' },
-  { name: 'gemini-3.5-flash-lite', retries: 1, label: 'Gemini 3.5 Flash-Lite', tier: 'fallback' }
+  { name: 'gemini-3.5-flash-lite', retries: 1, label: 'Gemini 3.5 Flash-Lite', tier: 'fallback' },
+  { name: 'gemini-3.1-flash-lite', retries: 1, label: 'Gemini 3.1 Flash-Lite', tier: 'fallback' }
 ];
 
+const primaryModels = MODEL_CASCADE.filter((m) => m.tier === 'primary').map((m) => m.name);
+const fallbackModels = MODEL_CASCADE.filter((m) => m.tier !== 'primary').map((m) => m.name);
 export const CASCADE_SUMMARY =
-  'gemma-4-31b-it -> gemma-4-26b-a4b-it (fallback: gemini-4-hydrogen -> gemini-3.8-flash -> gemini-3.5-flash-lite)';
+  `${primaryModels.join(' -> ')}${fallbackModels.length ? ` (fallback: ${fallbackModels.join(' -> ')})` : ''}`;
 
 /**
  * Call the Google Generative Language API using the configured Gemma 4 primary

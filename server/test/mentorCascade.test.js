@@ -1,6 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { MODEL_CASCADE, callGenerativeLanguageApi } from '../src/aiMentor.js';
+import { MODEL_CASCADE, CASCADE_SUMMARY, callGenerativeLanguageApi } from '../src/aiMentor.js';
 
 const noopSleep = async () => {};
 
@@ -11,54 +11,57 @@ function jsonResponse(body, status = 200) {
   });
 }
 
-test('MODEL_CASCADE prioritizes Gemma 4 31B and 26B, followed by text-capable Gemini fallbacks', () => {
+test('MODEL_CASCADE prioritizes Gemma 4 26B followed by Gemini Flash-Lite fallbacks', () => {
   assert.deepEqual(
     MODEL_CASCADE.map((m) => ({ name: m.name, tier: m.tier })),
     [
-      { name: 'gemma-4-31b-it', tier: 'primary' },
       { name: 'gemma-4-26b-a4b-it', tier: 'primary' },
-      { name: 'gemini-4-hydrogen', tier: 'fallback' },
-      { name: 'gemini-3.8-flash', tier: 'fallback' },
-      { name: 'gemini-3.5-flash-lite', tier: 'fallback' }
+      { name: 'gemini-3.5-flash-lite', tier: 'fallback' },
+      { name: 'gemini-3.1-flash-lite', tier: 'fallback' }
     ]
+  );
+  assert.equal(
+    CASCADE_SUMMARY,
+    'gemma-4-26b-a4b-it (fallback: gemini-3.5-flash-lite -> gemini-3.1-flash-lite)'
   );
 });
 
-test('callGenerativeLanguageApi tries Gemma 4 31B first and falls back to Gemma 4 26B on overload', async () => {
+test('callGenerativeLanguageApi retries Gemma 4 26B on overload and falls back to Gemini 3.5 Flash-Lite', async () => {
   const calledUrls = [];
   const fakeFetch = async (url) => {
     calledUrls.push(url);
-    if (url.includes('gemma-4-31b-it')) {
+    if (url.includes('gemma-4-26b-a4b-it')) {
       return jsonResponse({ error: { code: 503, message: 'Service overloaded' } }, 503);
     }
-    if (url.includes('gemma-4-26b-a4b-it')) {
-      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Answer from 26B' }] } }] });
+    if (url.includes('gemini-3.5-flash-lite')) {
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Answer from 3.5 Flash-Lite' }] } }] });
     }
     throw new Error(`Unexpected model URL: ${url}`);
   };
 
   const res = await callGenerativeLanguageApi('test-key', 'Explain EML', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
-  assert.equal(res.modelId, 'gemma-4-26b-a4b-it');
-  assert.equal(res.tier, 'primary');
-  assert.equal(res.text, 'Answer from 26B');
-  assert.equal(calledUrls.filter((u) => u.includes('gemma-4-31b-it')).length, 3);
-  assert.equal(calledUrls.filter((u) => u.includes('gemma-4-26b-a4b-it')).length, 1);
+  assert.equal(res.modelId, 'gemini-3.5-flash-lite');
+  assert.equal(res.tier, 'fallback');
+  assert.equal(res.text, 'Answer from 3.5 Flash-Lite');
+  assert.equal(calledUrls.filter((u) => u.includes('gemma-4-26b-a4b-it')).length, 3);
+  assert.equal(calledUrls.filter((u) => u.includes('gemini-3.5-flash-lite')).length, 1);
 });
 
-test('callGenerativeLanguageApi falls back to Gemini 4 Hydrogen when both Gemma 4 models fail', async () => {
+test('callGenerativeLanguageApi falls back to Gemini 3.1 Flash-Lite when earlier models fail', async () => {
   const calledModels = [];
   const fakeFetch = async (url) => {
     const model = url.match(/models\/([^:]+):/)?.[1];
     calledModels.push(model);
-    if (model === 'gemini-4-hydrogen') {
-      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Answer from Hydrogen' }] } }] });
+    if (model === 'gemini-3.1-flash-lite') {
+      return jsonResponse({ candidates: [{ content: { parts: [{ text: 'Answer from 3.1 Flash-Lite' }] } }] });
     }
     return jsonResponse({ error: { code: 404, message: 'Model not found' } }, 404);
   };
 
   const res = await callGenerativeLanguageApi('test-key', 'Explain RAP', { fetchImpl: fakeFetch, sleepImpl: noopSleep });
-  assert.deepEqual(calledModels, ['gemma-4-31b-it', 'gemma-4-26b-a4b-it', 'gemini-4-hydrogen']);
-  assert.equal(res.modelId, 'gemini-4-hydrogen');
+  assert.deepEqual(calledModels, ['gemma-4-26b-a4b-it', 'gemini-3.5-flash-lite', 'gemini-3.1-flash-lite']);
+  assert.equal(res.modelId, 'gemini-3.1-flash-lite');
+  assert.equal(res.model, 'Gemini 3.1 Flash-Lite');
   assert.equal(res.tier, 'fallback');
 });
 
