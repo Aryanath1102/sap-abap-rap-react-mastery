@@ -25,6 +25,9 @@ import {
   exportAllData
 } from './db.js';
 import { validateAssignment, analyzeMentorPrompt } from './cleanCoreValidator.js';
+import { MODEL_CASCADE, CASCADE_SUMMARY, callGenerativeLanguageApi } from './aiMentor.js';
+
+export { MODEL_CASCADE, callGenerativeLanguageApi };
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
@@ -33,90 +36,6 @@ const __dirname = path.dirname(__filename);
 dotenv.config({ path: path.resolve(__dirname, '../.env') });
 dotenv.config({ path: path.resolve(__dirname, '../../.env') });
 dotenv.config();
-
-// Sleep helper for retry backoff
-const sleep = (ms) => new Promise(resolve => setTimeout(resolve, ms));
-
-// Helper to call Generative Language API with model cascade + retry
-async function callGenerativeLanguageApi(model, apiKey, content) {
-  const systemInstruction = 'You are a Principal SAP Technical Architect and Clean Core Lead. You teach Modern ABAP (7.50+ / 7.57+ / ABAP Cloud), CDS View Entities (7.55+), SAP RAP (strict ( 2 )), OData V4, and React UI integration. NEVER teach or allow classic ABAP (no WRITE, no FORM/PERFORM, no HEADER LINE, no OCCURS 0, no unreleased tables like BUT000/MARA). Format answers with Level 1 (Layman terms & real-world analogy) followed by Level 2 (SAP Technical specifications, internal mechanics, and Clean Core vs On-Premise distinctions).';
-
-  // Model cascade: Gemma 4 26B primary → Gemini Flash fallback
-  const modelCascade = [
-    { name: 'gemma-4-26b-a4b-it', retries: 2, label: 'Gemma 4 26B' },
-    { name: 'gemma-4-26b-it', retries: 1, label: 'Gemma 4 26B' },
-    { name: 'gemini-2.0-flash', retries: 2, label: 'Gemini 2.0 Flash' },
-    { name: 'gemini-1.5-flash', retries: 1, label: 'Gemini 1.5 Flash' }
-  ];
-
-  let lastError = null;
-
-  for (const modelDef of modelCascade) {
-    for (let attempt = 0; attempt <= modelDef.retries; attempt++) {
-      try {
-        if (attempt > 0) {
-          await sleep(1000 * Math.pow(2, attempt - 1));
-        }
-
-        const payload = {
-          contents: [{
-            role: 'user',
-            parts: [{
-              text: `[SYSTEM INSTRUCTION]\n${systemInstruction}\n\n[USER QUESTION]\n${content}`
-            }]
-          }]
-        };
-
-        const url = `https://generativelanguage.googleapis.com/v1beta/models/${encodeURIComponent(modelDef.name)}:generateContent`;
-
-        const reqHeaders = {
-          'Content-Type': 'application/json',
-          'x-goog-api-key': apiKey
-        };
-
-        let response = await fetch(url, {
-          method: 'POST',
-          headers: reqHeaders,
-          body: JSON.stringify(payload)
-        });
-
-        let data = await response.json();
-
-        if (data.error) {
-          const msg = data.error.message || '';
-          lastError = new Error(msg || `API error (${data.error.code})`);
-          // Retryable: high demand / overloaded / 503
-          if (msg.includes('high demand') || msg.includes('overloaded') || data.error.code === 503) {
-            console.warn(`[AI] ${modelDef.name} attempt ${attempt + 1}: ${msg} — retrying...`);
-            continue;
-          }
-          // Not found / deprecated → skip to next model
-          if (msg.includes('not found') || msg.includes('404') || msg.includes('no longer available') || msg.includes('not supported')) {
-            console.warn(`[AI] ${modelDef.name}: not available, trying next model...`);
-            break;
-          }
-          throw lastError;
-        }
-
-        const text = data.candidates?.[0]?.content?.parts?.[0]?.text;
-        if (text) {
-          console.log(`[AI] Success with ${modelDef.label} (${modelDef.name})`);
-          return { text, model: modelDef.label };
-        }
-        throw new Error('No candidate content received from model API');
-      } catch (err) {
-        lastError = err;
-        if (err.message && (err.message.includes('not found') || err.message.includes('404') || err.message.includes('is not supported') || err.message.includes('no longer available'))) {
-          break; // skip to next model
-        }
-        // For other errors on last retry attempt, continue to next model
-        if (attempt >= modelDef.retries) break;
-      }
-    }
-  }
-
-  throw lastError || new Error('All AI models are temporarily unavailable');
-}
 
 export const app = express();
 if (process.env.VERCEL) app.set('trust proxy', 1);
@@ -268,10 +187,10 @@ app.post('/api/mentor/chat', async (req, res) => {
         botResponse = `*Notice: Daily API rate limit (${dailyLimit} requests/day) reached. Seamlessly switched to built-in SAP Architect Engine:*\n\n` + analyzeMentorPrompt(content);
       } else {
         try {
-          const result = await callGenerativeLanguageApi('gemma-4-26b-a4b-it', geminiKey, content);
+          const result = await callGenerativeLanguageApi(geminiKey, content);
           botResponse = result.text;
-          if (result.model !== 'Gemma 4 26B') {
-            botResponse = `*[Powered by ${result.model} — Gemma 4 26B was temporarily unavailable]*\n\n` + botResponse;
+          if (result.tier !== 'primary') {
+            botResponse = `*[Powered by ${result.model} — Gemma 4 31B and 26B were temporarily unavailable]*\n\n` + botResponse;
           }
         } catch (apiError) {
           console.warn('AI proxy error, falling back to built-in Clean Core analyzer:', apiError.message);
@@ -301,7 +220,8 @@ app.get('/api/mentor/usage', async (req, res) => {
       count: usage.count,
       limit: dailyLimit,
       remaining: Math.max(0, dailyLimit - usage.count),
-      model: 'gemma-4-26b-a4b-it (cascade: gemini-2.0-flash fallback)'
+      model: CASCADE_SUMMARY,
+      liveApiConfigured: Boolean(process.env.GEMINI_API_KEY)
     });
   } catch (err) {
     res.status(500).json({ error: err.message });
