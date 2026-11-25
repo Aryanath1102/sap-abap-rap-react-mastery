@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Copy, Check } from 'lucide-react';
+import { splitCodeBlocks, tokenizeInline } from '../utils/chatFormatter';
 
 /**
  * Renders WhatsApp-style (*bold*, _italic_, ~strike~, `code`, ```block```)
@@ -38,56 +39,39 @@ function ChatCodeSnippet({ code, language }) {
   );
 }
 
-// Match inline code first, then **bold**, *bold*, ~strike~, and word-bounded _italic_
-const INLINE_TOKEN_RE =
-  /(`[^`\n]+`|\*\*[^\n*](?:[^\n]*?[^\n*])?\*\*|\*[^\s*\n](?:[^\n]*?[^\s*\n])?\*|~[^\s~\n](?:[^\n]*?[^\s~\n])?~|(?:^|(?<=[\s(]))_[^\s_\n](?:[^\n]*?[^\s_\n])?_(?=$|[\s.,!?:;)]))/g;
-
-function renderInlineFormatting(text, isUser) {
-  if (!text) return null;
-  const parts = [];
-  let lastIdx = 0;
-  let match;
-  let key = 0;
-
-  INLINE_TOKEN_RE.lastIndex = 0;
-  while ((match = INLINE_TOKEN_RE.exec(text)) !== null) {
-    if (match.index > lastIdx) {
-      parts.push(text.slice(lastIdx, match.index));
-    }
-
-    const token = match[0];
-    if (token.startsWith('`') && token.endsWith('`')) {
-      parts.push(
+function renderTokens(tokens, isUser, prefix = 't') {
+  return tokens.map((tok, idx) => {
+    const key = `${prefix}-${idx}`;
+    if (tok.type === 'text') return tok.value;
+    if (tok.type === 'code') {
+      return (
         <code
-          key={key++}
+          key={key}
           className={`px-1.5 py-0.5 rounded font-mono text-[11px] ${
             isUser
               ? 'bg-sky-700/80 text-white'
               : 'bg-slate-100 dark:bg-slate-900 text-sky-700 dark:text-sky-300 border border-slate-200/80 dark:border-slate-700'
           }`}
         >
-          {token.slice(1, -1)}
+          {tok.value}
         </code>
       );
-    } else if (token.startsWith('**') && token.endsWith('**')) {
-      parts.push(<strong key={key++} className="font-semibold">{renderInlineFormatting(token.slice(2, -2), isUser)}</strong>);
-    } else if (token.startsWith('*') && token.endsWith('*')) {
-      parts.push(<strong key={key++} className="font-semibold">{renderInlineFormatting(token.slice(1, -1), isUser)}</strong>);
-    } else if (token.startsWith('~') && token.endsWith('~')) {
-      parts.push(<del key={key++} className="opacity-75">{token.slice(1, -1)}</del>);
-    } else if (token.startsWith('_') && token.endsWith('_')) {
-      parts.push(<em key={key++} className="italic">{renderInlineFormatting(token.slice(1, -1), isUser)}</em>);
-    } else {
-      parts.push(token);
     }
+    if (tok.type === 'bold') {
+      return <strong key={key} className="font-semibold">{renderTokens(tok.children, isUser, key)}</strong>;
+    }
+    if (tok.type === 'italic') {
+      return <em key={key} className="italic">{renderTokens(tok.children, isUser, key)}</em>;
+    }
+    if (tok.type === 'strike') {
+      return <del key={key} className="opacity-75">{renderTokens(tok.children, isUser, key)}</del>;
+    }
+    return null;
+  });
+}
 
-    lastIdx = INLINE_TOKEN_RE.lastIndex;
-  }
-
-  if (lastIdx < text.length) {
-    parts.push(text.slice(lastIdx));
-  }
-  return parts;
+function renderInlineFormatting(text, isUser) {
+  return renderTokens(tokenizeInline(text), isUser);
 }
 
 function renderTextSegment(segment, isUser, segKey) {
@@ -191,38 +175,18 @@ function renderTextSegment(segment, isUser, segKey) {
 }
 
 export function ChatMessageContent({ content, isUser = false }) {
-  const text = typeof content === 'string' ? content : JSON.stringify(content);
-  const blocks = [];
-  const fenceRe = /```([a-zA-Z0-9_-]*)\r?\n([\s\S]*?)```/g;
-  let lastIndex = 0;
-  let match;
-  let key = 0;
-
-  while ((match = fenceRe.exec(text)) !== null) {
-    if (match.index > lastIndex) {
-      blocks.push(
-        <div key={key++} className="space-y-1">
-          {renderTextSegment(text.slice(lastIndex, match.index), isUser, `seg-${key}`)}
-        </div>
-      );
-    }
-    blocks.push(
-      <ChatCodeSnippet
-        key={key++}
-        language={match[1]}
-        code={match[2].replace(/\r?\n$/, '')}
-      />
-    );
-    lastIndex = fenceRe.lastIndex;
-  }
-
-  if (lastIndex < text.length) {
-    blocks.push(
-      <div key={key++} className="space-y-1">
-        {renderTextSegment(text.slice(lastIndex), isUser, `seg-${key}`)}
-      </div>
-    );
-  }
-
-  return <div className="space-y-1.5">{blocks}</div>;
+  const blocks = splitCodeBlocks(content);
+  return (
+    <div className="space-y-1.5">
+      {blocks.map((block, idx) =>
+        block.type === 'code' ? (
+          <ChatCodeSnippet key={idx} language={block.language} code={block.value} />
+        ) : (
+          <div key={idx} className="space-y-1">
+            {renderTextSegment(block.value, isUser, `seg-${idx}`)}
+          </div>
+        )
+      )}
+    </div>
+  );
 }
