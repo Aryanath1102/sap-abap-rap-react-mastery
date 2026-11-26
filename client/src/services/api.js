@@ -18,7 +18,9 @@ export const recordQuizAttempt = (score,total,answersJson={}) => request('/quiz/
 export const fetchQuizHistory = () => request('/quiz/history');
 export const getExportUrl = () => '/api/export';
 export async function fetchCurrentSession() { try { return await request('/auth/session'); } catch(e) { if(e.status===401) return null; throw e; } }
+export const fetchAuthConfig = () => request('/auth/config');
 export const login = credentials => request('/auth/login','POST',credentials);
+export const loginWithGoogle = credential => request('/auth/google','POST',{credential});
 export const logout = () => request('/auth/logout','POST',{});
 export const register = data => request('/auth/register','POST',data);
 export const registerUser = register;

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   ShieldCheck,
   Lock,
@@ -13,7 +13,11 @@ import {
   Layers,
   Info
 } from 'lucide-react';
-import { login, register } from '../services/api';
+import { login, register, loginWithGoogle, fetchAuthConfig } from '../services/api';
+
+const DEFAULT_GOOGLE_CLIENT_ID =
+  import.meta.env.VITE_GOOGLE_CLIENT_ID ||
+  '1051503220828-nqa80v2c9cpboi5i6tq6p5hvhniog25v.apps.googleusercontent.com';
 
 export function LoginScreen({ onLoginSuccess }) {
   const [activeTab, setActiveTab] = useState('login'); // 'login' | 'register'
@@ -30,6 +34,90 @@ export function LoginScreen({ onLoginSuccess }) {
   const [loading, setLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
+  const [googleClientId, setGoogleClientId] = useState(DEFAULT_GOOGLE_CLIENT_ID);
+  const [googleStatus, setGoogleStatus] = useState('loading');
+  const googleBtnRef = useRef(null);
+
+  useEffect(() => {
+    let active = true;
+    fetchAuthConfig()
+      .then((cfg) => {
+        if (active && cfg?.googleClientId) {
+          setGoogleClientId(cfg.googleClientId);
+        }
+      })
+      .catch(() => {});
+    return () => {
+      active = false;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (activeTab !== 'login' || !googleClientId) return;
+
+    let cancelled = false;
+    let pollTimer = null;
+
+    const handleGoogleCredential = async (response) => {
+      if (!response?.credential || cancelled) return;
+      setErrorMsg('');
+      setSuccessMsg('');
+      try {
+        setLoading(true);
+        const res = await loginWithGoogle(response.credential);
+        if (res?.pendingApproval) {
+          setSuccessMsg(
+            `Google account "${res.email}" registered as "${res.username}" and is pending Administrator approval by Aryanath.`
+          );
+        } else if (res?.sessionId) {
+          onLoginSuccess(res);
+        }
+      } catch (err) {
+        setErrorMsg(err.message || 'Google sign-in failed.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    const initGoogleButton = () => {
+      const gis = window.google?.accounts?.id;
+      const container = googleBtnRef.current;
+      if (!gis || !container) return false;
+
+      gis.initialize({
+        client_id: googleClientId,
+        callback: handleGoogleCredential
+      });
+      container.innerHTML = '';
+      gis.renderButton(container, {
+        theme: 'outline',
+        size: 'large',
+        shape: 'pill',
+        text: 'continue_with',
+        width: container.offsetWidth || 340
+      });
+      setGoogleStatus('ready');
+      return true;
+    };
+
+    if (!initGoogleButton()) {
+      let attempts = 0;
+      pollTimer = setInterval(() => {
+        attempts += 1;
+        if (initGoogleButton()) {
+          clearInterval(pollTimer);
+        } else if (attempts >= 25) {
+          clearInterval(pollTimer);
+          if (!cancelled) setGoogleStatus('unavailable');
+        }
+      }, 200);
+    }
+
+    return () => {
+      cancelled = true;
+      if (pollTimer) clearInterval(pollTimer);
+    };
+  }, [activeTab, googleClientId]);
 
   const handleLogin = async (e) => {
     e?.preventDefault();
@@ -243,6 +331,26 @@ export function LoginScreen({ onLoginSuccess }) {
                     </>
                   )}
                 </button>
+
+                {/* Google OAuth 2.0 Sign-In */}
+                <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
+                  <div className="flex items-center gap-2 text-[11px] text-slate-400">
+                    <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                    <span>or continue with Google</span>
+                    <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
+                  </div>
+                  <div ref={googleBtnRef} className="w-full flex justify-center min-h-[40px]" />
+                  {googleStatus === 'loading' && (
+                    <p className="text-center text-[11px] text-slate-400">
+                      Loading Google Sign-In...
+                    </p>
+                  )}
+                  {googleStatus === 'unavailable' && (
+                    <p className="text-center text-[11px] text-slate-400">
+                      Google Sign-In unavailable right now. Use username/email login above.
+                    </p>
+                  )}
+                </div>
 
                 {/* Quick Fill Admin Button */}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80">

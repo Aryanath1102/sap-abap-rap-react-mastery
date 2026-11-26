@@ -1,5 +1,6 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { collection, databaseHealthy, transaction, checkAuthLimit } from './db.js';
+import { DEFAULT_GOOGLE_CLIENT_ID, verifyGoogleIdToken } from './googleAuth.js';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const hashPassword=password=>{const salt=randomBytes(16).toString('hex');return `${salt}:${scryptSync(password,salt,64).toString('hex')}`;};
 function matches(password,stored) {const [salt,hash]=stored.split(':');return timingSafeEqual(Buffer.from(hash,'hex'),scryptSync(password,salt,64));}
@@ -35,6 +36,7 @@ export function mountAuth(app) {
   if(req.method==='POST'&&!await checkAuthLimit(digest(req.ip||'unknown')))return res.status(429).json({error:'Too many attempts. Try again in a minute.'});next();
  });
  app.get('/api/broadcast',async(req,res)=>res.json((await collection('settings').findOne({_id:'broadcast'}))?.data||{active:false,message:''}));
+ app.get('/api/auth/config',(req,res)=>res.json({googleClientId:process.env.GOOGLE_CLIENT_ID||DEFAULT_GOOGLE_CLIENT_ID}));
  app.post('/api/auth/register',async(req,res)=>{
   const {username,email,password,name='',role}=req.body;
   if(typeof username!=='string'||!/^[a-zA-Z0-9_.-]{3,64}$/.test(username)||typeof email!=='string'||!email.includes('@')||typeof password!=='string'||password.length<12||password.length>256)return res.status(400).json({error:'Provide a username, email, and password of 12–256 characters.'});
@@ -46,7 +48,28 @@ export function mountAuth(app) {
   if(typeof usernameOrEmail!=='string'||typeof password!=='string'||password.length>256)return res.status(400).json({error:'Credentials required.'});
   const input=usernameOrEmail.toLowerCase();
   const user=await collection('users').findOne({$or:[{username:input},{email:input}]});
-  if(!user||!matches(password,user.password_hash))return res.status(401).json({error:'Incorrect username or password.'});
+  if(!user||!user.password_hash||!matches(password,user.password_hash))return res.status(401).json({error:'Incorrect username or password.'});
+  if(user.status!=='approved')return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
+  const token=randomBytes(32).toString('hex'),id=randomUUID(),age=8*60*60*1000;
+  await collection('sessions').updateOne({_id:user._id},{$set:{sessionId:id,tokenHash:digest(token),expiresAt:new Date(Date.now()+age),loginTime:new Date().toISOString(),authVersion:user.authVersion||0}},{upsert:true});
+  cookie(res,token,age);res.json({...publicUser(user),sessionId:id});
+ });
+ app.post('/api/auth/google',async(req,res)=>{
+  const {credential}=req.body||{};
+  if(typeof credential!=='string'||!credential.trim())return res.status(400).json({error:'Google credential token is required.'});
+  let profile;
+  try {profile=await verifyGoogleIdToken(credential);}
+  catch(err) {return res.status(401).json({error:err.message||'Google sign-in verification failed.'});}
+  let user=await collection('users').findOne({$or:[{googleSub:profile.sub},{email:profile.email}]});
+  if(!user) {
+   const base=profile.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g,'').slice(0,48)||'sap_user';
+   const normalizedBase=base.length>=3?base:`${base}_sap`;
+   const exists=await collection('users').findOne({username:normalizedBase});
+   const username=exists?`${normalizedBase.slice(0,55)}_${randomBytes(3).toString('hex')}`:normalizedBase;
+   await collection('users').insertOne({_id:randomUUID(),username,email:profile.email,name:profile.name,password_hash:null,googleSub:profile.sub,authProvider:'google',role:'student',requested_role:'student',status:'pending_approval',authVersion:0});
+   return res.status(202).json({pendingApproval:true,email:profile.email,username,name:profile.name});
+  }
+  if(!user.googleSub) {await collection('users').updateOne({_id:user._id},{$set:{googleSub:profile.sub}});}
   if(user.status!=='approved')return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
   const token=randomBytes(32).toString('hex'),id=randomUUID(),age=8*60*60*1000;
   await collection('sessions').updateOne({_id:user._id},{$set:{sessionId:id,tokenHash:digest(token),expiresAt:new Date(Date.now()+age),loginTime:new Date().toISOString(),authVersion:user.authVersion||0}},{upsert:true});
