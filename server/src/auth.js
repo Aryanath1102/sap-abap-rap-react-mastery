@@ -66,11 +66,15 @@ export function mountAuth(app) {
    const normalizedBase=base.length>=3?base:`${base}_sap`;
    const exists=await collection('users').findOne({username:normalizedBase});
    const username=exists?`${normalizedBase.slice(0,55)}_${randomBytes(3).toString('hex')}`:normalizedBase;
-   await collection('users').insertOne({_id:randomUUID(),username,email:profile.email,name:profile.name,password_hash:null,googleSub:profile.sub,authProvider:'google',role:'student',requested_role:'student',status:'pending_approval',authVersion:0});
-   return res.status(202).json({pendingApproval:true,email:profile.email,username,name:profile.name});
+   user={_id:randomUUID(),username,email:profile.email,name:profile.name,password_hash:null,googleSub:profile.sub,authProvider:'google',role:'student',requested_role:'student',status:'approved',authVersion:0};
+   await collection('users').insertOne(user);
+  } else {
+   if(['rejected','disabled'].includes(user.status))return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
+   const updates={};
+   if(!user.googleSub)updates.googleSub=profile.sub;
+   if(user.status==='pending_approval'){updates.status='approved';user.status='approved';}
+   if(Object.keys(updates).length>0)await collection('users').updateOne({_id:user._id},{$set:updates});
   }
-  if(!user.googleSub) {await collection('users').updateOne({_id:user._id},{$set:{googleSub:profile.sub}});}
-  if(user.status!=='approved')return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
   const token=randomBytes(32).toString('hex'),id=randomUUID(),age=8*60*60*1000;
   await collection('sessions').updateOne({_id:user._id},{$set:{sessionId:id,tokenHash:digest(token),expiresAt:new Date(Date.now()+age),loginTime:new Date().toISOString(),authVersion:user.authVersion||0}},{upsert:true});
   cookie(res,token,age);res.json({...publicUser(user),sessionId:id});
