@@ -1,10 +1,34 @@
 import { randomBytes, randomUUID, scryptSync, timingSafeEqual, createHash } from 'node:crypto';
 import { collection, databaseHealthy, transaction, checkAuthLimit } from './db.js';
 import { DEFAULT_GOOGLE_CLIENT_ID, verifyGoogleIdToken } from './googleAuth.js';
+import { DEFAULT_GITHUB_CLIENT_ID, exchangeGithubCodeForProfile } from './githubAuth.js';
 const digest=value=>createHash('sha256').update(value).digest('hex');
 const hashPassword=password=>{const salt=randomBytes(16).toString('hex');return `${salt}:${scryptSync(password,salt,64).toString('hex')}`;};
 function matches(password,stored) {const [salt,hash]=stored.split(':');return timingSafeEqual(Buffer.from(hash,'hex'),scryptSync(password,salt,64));}
 const publicUser=u=>({id:u._id,userId:u._id,username:u.username,email:u.email,name:u.name,role:u.role,requestedRole:u.requested_role,status:u.status});
+async function issueSession(res,user) {
+ const token=randomBytes(32).toString('hex'),id=randomUUID(),age=8*60*60*1000;
+ await collection('sessions').updateOne({_id:user._id},{$set:{sessionId:id,tokenHash:digest(token),expiresAt:new Date(Date.now()+age),loginTime:new Date().toISOString(),authVersion:user.authVersion||0}},{upsert:true});
+ cookie(res,token,age);return {...publicUser(user),sessionId:id};
+}
+async function completeOAuthLogin(res,{provider,providerField,providerId,email,name,preferredUsername}) {
+ let user=await collection('users').findOne({$or:[{[providerField]:providerId},{email}]});
+ if(!user) {
+  const raw=(preferredUsername||email.split('@')[0]).toLowerCase().replace(/[^a-z0-9_.-]/g,'').slice(0,48)||'sap_user';
+  const normalizedBase=raw.length>=3?raw:`${raw}_sap`;
+  const exists=await collection('users').findOne({username:normalizedBase});
+  const username=exists?`${normalizedBase.slice(0,55)}_${randomBytes(3).toString('hex')}`:normalizedBase;
+  user={_id:randomUUID(),username,email,name,password_hash:null,[providerField]:providerId,authProvider:provider,role:'student',requested_role:'student',status:'approved',authVersion:0};
+  await collection('users').insertOne(user);
+ } else {
+  if(['rejected','disabled'].includes(user.status))return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
+  const updates={};
+  if(!user[providerField])updates[providerField]=providerId;
+  if(user.status==='pending_approval'){updates.status='approved';user.status='approved';}
+  if(Object.keys(updates).length>0)await collection('users').updateOne({_id:user._id},{$set:updates});
+ }
+ return res.json(await issueSession(res,user));
+}
 export async function initAuth() {
  if(!process.env.ADMIN_USERNAME || !process.env.ADMIN_PASSWORD)return;
  if(await collection('users').findOne({role:'admin'}))return;
@@ -36,7 +60,10 @@ export function mountAuth(app) {
   if(req.method==='POST'&&!await checkAuthLimit(digest(req.ip||'unknown')))return res.status(429).json({error:'Too many attempts. Try again in a minute.'});next();
  });
  app.get('/api/broadcast',async(req,res)=>res.json((await collection('settings').findOne({_id:'broadcast'}))?.data||{active:false,message:''}));
- app.get('/api/auth/config',(req,res)=>res.json({googleClientId:process.env.GOOGLE_CLIENT_ID||DEFAULT_GOOGLE_CLIENT_ID}));
+ app.get('/api/auth/config',(req,res)=>res.json({
+  googleClientId:process.env.GOOGLE_CLIENT_ID||DEFAULT_GOOGLE_CLIENT_ID,
+  githubClientId:process.env.GITHUB_CLIENT_ID||DEFAULT_GITHUB_CLIENT_ID
+ }));
  app.post('/api/auth/register',async(req,res)=>{
   const {username,email,password,name='',role}=req.body;
   if(typeof username!=='string'||!/^[a-zA-Z0-9_.-]{3,64}$/.test(username)||typeof email!=='string'||!email.includes('@')||typeof password!=='string'||password.length<12||password.length>256)return res.status(400).json({error:'Provide a username, email, and password of 12–256 characters.'});
@@ -50,9 +77,7 @@ export function mountAuth(app) {
   const user=await collection('users').findOne({$or:[{username:input},{email:input}]});
   if(!user||!user.password_hash||!matches(password,user.password_hash))return res.status(401).json({error:'Incorrect username or password.'});
   if(user.status!=='approved')return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
-  const token=randomBytes(32).toString('hex'),id=randomUUID(),age=8*60*60*1000;
-  await collection('sessions').updateOne({_id:user._id},{$set:{sessionId:id,tokenHash:digest(token),expiresAt:new Date(Date.now()+age),loginTime:new Date().toISOString(),authVersion:user.authVersion||0}},{upsert:true});
-  cookie(res,token,age);res.json({...publicUser(user),sessionId:id});
+  res.json(await issueSession(res,user));
  });
  app.post('/api/auth/google',async(req,res)=>{
   const {credential}=req.body||{};
@@ -60,24 +85,17 @@ export function mountAuth(app) {
   let profile;
   try {profile=await verifyGoogleIdToken(credential);}
   catch(err) {return res.status(401).json({error:err.message||'Google sign-in verification failed.'});}
-  let user=await collection('users').findOne({$or:[{googleSub:profile.sub},{email:profile.email}]});
-  if(!user) {
-   const base=profile.email.split('@')[0].toLowerCase().replace(/[^a-z0-9_.-]/g,'').slice(0,48)||'sap_user';
-   const normalizedBase=base.length>=3?base:`${base}_sap`;
-   const exists=await collection('users').findOne({username:normalizedBase});
-   const username=exists?`${normalizedBase.slice(0,55)}_${randomBytes(3).toString('hex')}`:normalizedBase;
-   user={_id:randomUUID(),username,email:profile.email,name:profile.name,password_hash:null,googleSub:profile.sub,authProvider:'google',role:'student',requested_role:'student',status:'approved',authVersion:0};
-   await collection('users').insertOne(user);
-  } else {
-   if(['rejected','disabled'].includes(user.status))return res.status(403).json({error:`Account ${user.status}. Administrator approval is required.`});
-   const updates={};
-   if(!user.googleSub)updates.googleSub=profile.sub;
-   if(user.status==='pending_approval'){updates.status='approved';user.status='approved';}
-   if(Object.keys(updates).length>0)await collection('users').updateOne({_id:user._id},{$set:updates});
-  }
-  const token=randomBytes(32).toString('hex'),id=randomUUID(),age=8*60*60*1000;
-  await collection('sessions').updateOne({_id:user._id},{$set:{sessionId:id,tokenHash:digest(token),expiresAt:new Date(Date.now()+age),loginTime:new Date().toISOString(),authVersion:user.authVersion||0}},{upsert:true});
-  cookie(res,token,age);res.json({...publicUser(user),sessionId:id});
+  return completeOAuthLogin(res,{provider:'google',providerField:'googleSub',providerId:profile.sub,email:profile.email,name:profile.name});
+ });
+ app.post('/api/auth/github',async(req,res)=>{
+  const {code,redirectUri}=req.body||{};
+  if(typeof code!=='string'||!code.trim())return res.status(400).json({error:'GitHub authorization code is required.'});
+  const allowedOrigin=process.env.APP_ORIGIN||req.headers.origin||`${req.protocol}://${req.get('host')}`;
+  if(redirectUri&&typeof redirectUri==='string'&&!redirectUri.startsWith(allowedOrigin))return res.status(400).json({error:'Invalid GitHub redirect URI.'});
+  let profile;
+  try {profile=await exchangeGithubCodeForProfile({code,redirectUri});}
+  catch(err) {return res.status(err.statusCode||401).json({error:err.message||'GitHub sign-in verification failed.'});}
+  return completeOAuthLogin(res,{provider:'github',providerField:'githubId',providerId:profile.id,email:profile.email,name:profile.name,preferredUsername:profile.login});
  });
  app.get('/api/auth/session',requireAuth,(req,res)=>res.json({...publicUser(req.user),sessionId:req.user.sessionId}));
  app.post('/api/auth/logout',requireAuth,async(req,res)=>{await collection('sessions').deleteOne({sessionId:req.user.sessionId});cookie(res,'',0);res.json({success:true});});

@@ -13,11 +13,17 @@ import {
   Layers,
   Info
 } from 'lucide-react';
-import { login, register, loginWithGoogle, fetchAuthConfig } from '../services/api';
+import { login, register, loginWithGoogle, loginWithGithub, fetchAuthConfig } from '../services/api';
 
 const DEFAULT_GOOGLE_CLIENT_ID =
   import.meta.env.VITE_GOOGLE_CLIENT_ID ||
   '1051503220828-nqa80v2c9cpboi5i6tq6p5hvhniog25v.apps.googleusercontent.com';
+
+const DEFAULT_GITHUB_CLIENT_ID =
+  import.meta.env.VITE_GITHUB_CLIENT_ID ||
+  'Ov23liMXxLfXuNchEyuL';
+
+const GITHUB_STATE_KEY = 'sap_github_oauth_state';
 
 export function LoginScreen({ onLoginSuccess }) {
   const [activeTab, setActiveTab] = useState('login'); // 'login' | 'register'
@@ -35,6 +41,7 @@ export function LoginScreen({ onLoginSuccess }) {
   const [errorMsg, setErrorMsg] = useState('');
   const [successMsg, setSuccessMsg] = useState('');
   const [googleClientId, setGoogleClientId] = useState(DEFAULT_GOOGLE_CLIENT_ID);
+  const [githubClientId, setGithubClientId] = useState(DEFAULT_GITHUB_CLIENT_ID);
   const [googleStatus, setGoogleStatus] = useState('loading');
   const googleBtnRef = useRef(null);
 
@@ -42,15 +49,72 @@ export function LoginScreen({ onLoginSuccess }) {
     let active = true;
     fetchAuthConfig()
       .then((cfg) => {
-        if (active && cfg?.googleClientId) {
-          setGoogleClientId(cfg.googleClientId);
-        }
+        if (!active) return;
+        if (cfg?.googleClientId) setGoogleClientId(cfg.googleClientId);
+        if (cfg?.githubClientId) setGithubClientId(cfg.githubClientId);
       })
       .catch(() => {});
     return () => {
       active = false;
     };
   }, []);
+
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search);
+    const code = params.get('code');
+    const returnedState = params.get('state');
+    const oauthError = params.get('error_description') || params.get('error');
+    if (!code && !oauthError) return;
+
+    const expectedState = sessionStorage.getItem(GITHUB_STATE_KEY);
+    sessionStorage.removeItem(GITHUB_STATE_KEY);
+    window.history.replaceState({}, '', window.location.pathname);
+
+    if (oauthError) {
+      setErrorMsg(`GitHub sign-in failed: ${oauthError}`);
+      return;
+    }
+    if (!expectedState || returnedState !== expectedState) {
+      setErrorMsg('GitHub sign-in state mismatch. Please try again.');
+      return;
+    }
+
+    let cancelled = false;
+    setLoading(true);
+    setErrorMsg('');
+    loginWithGithub(code, window.location.origin)
+      .then((res) => {
+        if (!cancelled && res?.sessionId) {
+          onLoginSuccess(res);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) setErrorMsg(err.message || 'GitHub sign-in failed.');
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  const handleGithubLogin = () => {
+    if (!githubClientId || loading) return;
+    const state =
+      typeof crypto !== 'undefined' && crypto.randomUUID
+        ? crypto.randomUUID()
+        : `${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    sessionStorage.setItem(GITHUB_STATE_KEY, state);
+    const authorizeUrl =
+      `https://github.com/login/oauth/authorize` +
+      `?client_id=${encodeURIComponent(githubClientId)}` +
+      `&redirect_uri=${encodeURIComponent(window.location.origin)}` +
+      `&scope=${encodeURIComponent('read:user user:email')}` +
+      `&state=${encodeURIComponent(state)}`;
+    window.location.assign(authorizeUrl);
+  };
 
   useEffect(() => {
     if (activeTab !== 'login' || !googleClientId) return;
@@ -332,11 +396,11 @@ export function LoginScreen({ onLoginSuccess }) {
                   )}
                 </button>
 
-                {/* Google OAuth 2.0 Sign-In */}
+                {/* OAuth 2.0 Sign-In (Google & GitHub) */}
                 <div className="pt-2 border-t border-slate-100 dark:border-slate-800/80 space-y-2.5">
                   <div className="flex items-center gap-2 text-[11px] text-slate-400">
                     <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
-                    <span>or continue with Google</span>
+                    <span>or continue with</span>
                     <span className="h-px flex-1 bg-slate-200 dark:bg-slate-800" />
                   </div>
                   <div ref={googleBtnRef} className="w-full flex justify-center min-h-[40px]" />
@@ -347,9 +411,24 @@ export function LoginScreen({ onLoginSuccess }) {
                   )}
                   {googleStatus === 'unavailable' && (
                     <p className="text-center text-[11px] text-slate-400">
-                      Google Sign-In unavailable right now. Use username/email login above.
+                      Google Sign-In unavailable right now. Use GitHub or username/email login.
                     </p>
                   )}
+                  <button
+                    type="button"
+                    onClick={handleGithubLogin}
+                    disabled={loading}
+                    className="w-full h-[40px] px-4 rounded-full border border-slate-300 dark:border-slate-700 bg-slate-900 hover:bg-slate-800 dark:bg-slate-950 dark:hover:bg-slate-800 text-white text-xs font-semibold transition flex items-center justify-center gap-2.5 shadow-2xs disabled:opacity-50"
+                  >
+                    <svg className="w-4 h-4 fill-current shrink-0" viewBox="0 0 24 24" aria-hidden="true">
+                      <path
+                        fillRule="evenodd"
+                        clipRule="evenodd"
+                        d="M12 2C6.477 2 2 6.484 2 12.017c0 4.425 2.865 8.18 6.839 9.504.5.092.682-.217.682-.483 0-.237-.008-.868-.013-1.703-2.782.605-3.369-1.343-3.369-1.343-.454-1.158-1.11-1.466-1.11-1.466-.908-.62.069-.608.069-.608 1.003.07 1.53 1.032 1.53 1.032.892 1.53 2.341 1.088 2.91.832.092-.647.35-1.088.636-1.338-2.22-.253-4.555-1.113-4.555-4.951 0-1.093.39-1.988 1.029-2.688-.103-.253-.446-1.272.098-2.65 0 0 .84-.27 2.75 1.026A9.564 9.564 0 0112 6.844c.85.004 1.705.115 2.504.337 1.909-1.296 2.747-1.027 2.747-1.027.546 1.379.202 2.398.1 2.651.64.7 1.028 1.595 1.028 2.688 0 3.848-2.339 4.695-4.566 4.943.359.309.678.92.678 1.855 0 1.338-.012 2.419-.012 2.747 0 .268.18.58.688.482A10.019 10.019 0 0022 12.017C22 6.484 17.522 2 12 2z"
+                      />
+                    </svg>
+                    <span>Continue with GitHub</span>
+                  </button>
                 </div>
 
                 {/* Quick Fill Admin Button */}

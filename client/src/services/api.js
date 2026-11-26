@@ -21,6 +21,7 @@ export async function fetchCurrentSession() { try { return await request('/auth/
 export const fetchAuthConfig = () => request('/auth/config');
 export const login = credentials => request('/auth/login','POST',credentials);
 export const loginWithGoogle = credential => request('/auth/google','POST',{credential});
+export const loginWithGithub = (code, redirectUri) => request('/auth/github','POST',{code,redirectUri});
 export const logout = () => request('/auth/logout','POST',{});
 export const register = data => request('/auth/register','POST',data);
 export const registerUser = register;
